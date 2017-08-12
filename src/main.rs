@@ -122,7 +122,7 @@ fn main_r() -> errors::Result<i32> {
 
     if let Some(ref recent_ip) = recent_ip {
         if recent_ip.check_for(&user, &rhost)? {
-            debug!("recent_ip match for {} {}", user, rhost);
+            info!("recent_ip match for {} {}", user, rhost);
             return Ok(0);
         }
     }
@@ -134,6 +134,7 @@ fn main_r() -> errors::Result<i32> {
     }
 
     if client.auth_for(&user, &rhost)? {
+        info!("successful duo auth for {} {}", user, rhost);
         if let Some(ref mut recent_ip) = recent_ip {
             recent_ip.set_for(&user, &rhost);
         }

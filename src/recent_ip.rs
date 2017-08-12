@@ -47,11 +47,12 @@ impl RecentIp {
         } else {
             return Err(ErrorKind::NoDbInConfig.into());
         };
-        let conn = rusqlite::Connection::open(path)?;
-        conn.execute_batch("BEGIN;
-                            CREATE TABLE IF NOT EXISTS logins (user STRING NOT NULL, rhost STRING NOT NULL, last_success_at INTEGER, UNIQUE (user, rhost));
-                            COMMIT;")?;
-        debug!("db initialized");
+        let mut conn = rusqlite::Connection::open(path)?;
+        {
+            let xact = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+            xact.execute("CREATE TABLE IF NOT EXISTS logins (user STRING NOT NULL, rhost STRING NOT NULL, last_success_at INTEGER, UNIQUE (user, rhost));", &[])?;
+            xact.commit()?;
+        }
         Ok(RecentIp {
             conn: conn,
             expiration: c.recent_ip_duration
