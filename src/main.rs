@@ -105,12 +105,18 @@ fn main_r() -> errors::Result<i32> {
     } else {
         let log_level = match env::var("RUST_LOG") {
             Ok(level) => log::LogLevelFilter::from_str(&level).map_err(|_| ErrorKind::InvalidLogLevel(level.to_owned()))?,
-            _ => log::LogLevelFilter::Info
+            _ => log::LogLevelFilter::Warn
         };
         syslog::init(syslog::Facility::LOG_AUTH, log_level, None).chain_err(|| "cannot initialize syslog")?;
     }
 
     let config = config::Config::from_path(Path::new(matches.value_of("config_file").unwrap()))?;
+
+    let mut client = duo_client::DuoClient::from_config(&config)?;
+
+    if matches.is_present("check") {
+        client.check()?;
+    }
 
     let user = get_env_var(matches.value_of("username_env").unwrap().to_owned())?;
     let rhost = get_env_var(matches.value_of("ip_env").unwrap().to_owned())?;
@@ -139,12 +145,6 @@ fn main_r() -> errors::Result<i32> {
         }
     }
 
-    let mut client = duo_client::DuoClient::from_config(&config)?;
-
-    if matches.is_present("check") {
-        client.check()?;
-    }
-
     if matches.is_present("never_duo") {
         warn!("bailing instead of calling duo");
         return Ok(1);
@@ -168,9 +168,11 @@ fn main() {
             ::std::process::exit(i);
         },
         Err(ref e) => {
+            error!("error: {}", e);
             eprintln!("error: {}", e);
 
             for e in e.iter().skip(1) {
+                error!("caused by: {}", e);
                 eprintln!("caused by: {}", e);
             }
 

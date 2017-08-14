@@ -140,10 +140,13 @@ impl DuoClient {
         req.set_param("ipaddr", rhost);
         req.set_param("factor", "push");
         req.set_param("device", "auto");
-        let mut resp = req.run(&self)?.error_for_status()?;
-        // read the whole body
-        let mut body = Vec::new();
-        resp.read_to_end(&mut body)?;
+        let mut resp = req.run(&self)?;
+        // read the whole body before raising any errors
+        let mut body = String::new();
+        resp.read_to_string(&mut body)?;
+        if let Err(e) = resp.error_for_status() {
+            return Err(e).chain_err(|| format!("error from server: {}", body));
+        }
         Ok(true)
     }
 }
