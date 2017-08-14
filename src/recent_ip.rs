@@ -70,7 +70,10 @@ impl RecentIp {
                 Duration::from_secs((now - ts) as u64)
             }
         }) {
-            Ok(time_delta) => Ok(time_delta < self.expiration),
+            Ok(time_delta) => {
+                debug!("recent_ip match was {:?} ago; expiration is {:?}", time_delta, self.expiration);
+                Ok(time_delta < self.expiration)
+            },
             Err(rusqlite::Error::QueryReturnedNoRows) => Ok(false),
             Err(e) => Err(e.into()),
         }
