@@ -12,6 +12,7 @@ extern crate rusqlite;
 extern crate url;
 extern crate crypto;
 extern crate itertools;
+extern crate ipnetwork;
 
 use clap::Arg;
 use std::env;
@@ -22,6 +23,7 @@ use std::net::IpAddr;
 mod config;
 mod duo_client;
 mod recent_ip;
+mod ip_whitelist;
 
 mod errors {
     error_chain!{
@@ -73,7 +75,7 @@ fn main_r() -> errors::Result<i32> {
                                      .long("config-file")
                                      .takes_value(true)
                                      .value_name("PATH")
-                                     .default_value("/usr/local/etc/duo-auth-rs.json")
+                                     .default_value("/etc/duo-auth-rs.json")
                                      .help("Path to config file"))
                             .arg(Arg::with_name("username_env")
                                      .long("username-env")
@@ -91,6 +93,10 @@ fn main_r() -> errors::Result<i32> {
                                      .long("check-duo")
                                      .takes_value(false)
                                      .help("Run check method on Duo before authing"))
+                            .arg(Arg::with_name("never_duo")
+                                     .long("never-duo")
+                                     .takes_value(false)
+                                     .help("If passed, will never call Duo and will just fail of no whitelists match"))
                             .get_matches();
     
     // set up logging
@@ -99,7 +105,7 @@ fn main_r() -> errors::Result<i32> {
     } else {
         let log_level = match env::var("RUST_LOG") {
             Ok(level) => log::LogLevelFilter::from_str(&level).map_err(|_| ErrorKind::InvalidLogLevel(level.to_owned()))?,
-            _ => log::LogLevelFilter::Warn
+            _ => log::LogLevelFilter::Info
         };
         syslog::init_unix(syslog::Facility::LOG_AUTH, log_level).chain_err(|| "cannot initialize syslog")?;
     }
@@ -109,10 +115,16 @@ fn main_r() -> errors::Result<i32> {
     let user = get_env_var(matches.value_of("username_env").unwrap().to_owned())?;
     let rhost = get_env_var(matches.value_of("ip_env").unwrap().to_owned())?;
 
-    let rhost = match IpAddr::from_str(&rhost)? {
+    let rhost_raw = IpAddr::from_str(&rhost)?;
+    let rhost = match rhost_raw {
         IpAddr::V4(v4_addr) => v4_addr.to_ipv6_mapped(),
         IpAddr::V6(v6_addr) => v6_addr,
     }.to_string();
+
+    if config.whitelist.contains(rhost_raw) {
+        info!("host {:?} is whitelisted", rhost);
+        return Ok(0);
+    }
 
     let mut recent_ip = if config.has_recent_ip() {
         Some(recent_ip::RecentIp::from_config(&config)?)
@@ -131,6 +143,11 @@ fn main_r() -> errors::Result<i32> {
 
     if matches.is_present("check") {
         client.check()?;
+    }
+
+    if matches.is_present("never_duo") {
+        warn!("bailing instead of calling duo");
+        return Ok(1);
     }
 
     if client.auth_for(&user, &rhost)? {
