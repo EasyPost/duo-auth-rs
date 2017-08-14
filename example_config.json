@@ -1,0 +1,12 @@
+{
+    "ikey": "your_duo_ikey",
+    "skey": "your_duo_skey",
+    "base": "https://your-duo-hostname",
+    "recent_ip_file": "/var/db/duo-auth-rs_recent_ip.sqlite",
+    "recent_ip_duration_s": 86400,
+    "whitelisted_networks": [
+        "127.0.0.0/8",
+        "10.0.0.0/8",
+        "fc00::/7"
+    ]
+}
