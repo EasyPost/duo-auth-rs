@@ -24,6 +24,7 @@ mod config;
 mod duo_client;
 mod recent_ip;
 mod ip_whitelist;
+mod logger;
 
 mod errors {
     error_chain!{
@@ -63,7 +64,7 @@ fn get_env_var(s: String) -> Result<String> {
 
 fn main_r() -> errors::Result<i32> {
     let matches = clap::App::new("duo-auth-rs")
-                            .version("0.1.1")
+                            .version("0.1.2")
                             .author("James Brown <jbrown@easypost.com>")
                             .arg(Arg::with_name("stderr")
                                      .short("e")
@@ -107,7 +108,7 @@ fn main_r() -> errors::Result<i32> {
             Ok(level) => log::LogLevelFilter::from_str(&level).map_err(|_| ErrorKind::InvalidLogLevel(level.to_owned()))?,
             _ => log::LogLevelFilter::Info
         };
-        syslog::init(syslog::Facility::LOG_AUTH, log_level, None).chain_err(|| "cannot initialize syslog")?;
+        logger::init_unix(syslog::Facility::LOG_AUTH, log_level).chain_err(|| "cannot initialize syslog")?;
     }
 
     let config = config::Config::from_path(Path::new(matches.value_of("config_file").unwrap()))?;
