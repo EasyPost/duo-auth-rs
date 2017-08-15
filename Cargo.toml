@@ -23,5 +23,5 @@ version = "^0.12"
 features = ["bundled"]
 
 [dependencies.syslog]
-git = "https://github.com/vorner/rust-syslog"
-rev = "5e5c72c0e850f0b7429f5645612dfeabde6b08e2"
+git = "https://github.com/Roguelazer/rust-syslog"
+branch = "unix-stream"
