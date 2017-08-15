@@ -46,7 +46,7 @@ impl Config {
     }
 
     pub fn from_path(p: &Path) -> Result<Self> {
-        let f = File::open(p).chain_err(|| "unable to open activeversions file")?;
+        let f = File::open(p).chain_err(|| format!("unable to open config file at {:?}", p))?;
         let config: RawConfig = serde_json::from_reader(f)?;
         Ok(Config::from_raw_config(config)?)
     }

@@ -63,7 +63,7 @@ fn get_env_var(s: String) -> Result<String> {
 
 fn main_r() -> errors::Result<i32> {
     let matches = clap::App::new("duo-auth-rs")
-                            .version("0.1.0")
+                            .version("0.1.1")
                             .author("James Brown <jbrown@easypost.com>")
                             .arg(Arg::with_name("stderr")
                                      .short("e")
@@ -105,7 +105,7 @@ fn main_r() -> errors::Result<i32> {
     } else {
         let log_level = match env::var("RUST_LOG") {
             Ok(level) => log::LogLevelFilter::from_str(&level).map_err(|_| ErrorKind::InvalidLogLevel(level.to_owned()))?,
-            _ => log::LogLevelFilter::Warn
+            _ => log::LogLevelFilter::Info
         };
         syslog::init(syslog::Facility::LOG_AUTH, log_level, None).chain_err(|| "cannot initialize syslog")?;
     }
@@ -150,6 +150,7 @@ fn main_r() -> errors::Result<i32> {
         return Ok(1);
     }
 
+    eprintln!("pushing login request to duo for {}@{}", user, rhost);
     if client.auth_for(&user, &rhost)? {
         info!("successful duo auth for {}@{}", user, rhost);
         if let Some(ref mut recent_ip) = recent_ip {
