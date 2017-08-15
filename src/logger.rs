@@ -13,28 +13,35 @@ impl SyslogLogger {
         Ok(Box::new(SyslogLogger {
             l: *syslog::unix(facility)?
         }))
+    }
 
+    // XXX: hyper and reqwest log responses at INFO even though they're pretty un-arguably
+    // debug information. turn them into debug level logs.
+    fn is_specially_filtered(&self, metadata: &LogMetadata) -> bool {
+        if metadata.level() == LogLevel::Info {
+            let tgt = metadata.target();
+            if (tgt == "hyper::http::response") || (tgt == "reqwest::async_impl::response") {
+                return true
+            }
+        }
+        false
     }
 }
 
 impl Log for SyslogLogger {
     fn enabled(&self, metadata: &LogMetadata) -> bool {
-        self.l.enabled(metadata)
+        if self.is_specially_filtered(metadata) {
+            false
+        } else {
+            self.l.enabled(metadata)
+        }
     }
 
     #[allow(unused_must_use)]
     fn log(&self, record: &LogRecord) {
-        // XXX: hyper and reqwest log responses at INFO even though they're pretty un-arguably
-        // debug information. turn them into debug level logs.
-        if record.metadata().level() == LogLevel::Info {
-            let tgt = record.metadata().target();
-            if (tgt == "hyper::http::response") || (tgt == "reqwest::async_impl::response") {
-                let message = &(format!("{}", record.args()));
-                self.l.debug(message);
-                return;
-            }
+        if ! self.is_specially_filtered(record.metadata()) {
+            self.l.log(record)
         }
-        self.l.log(record)
     }
 }
 
