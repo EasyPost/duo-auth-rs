@@ -9,7 +9,6 @@ rust-crypto = "0.2"
 clap = "2"
 log = "^0.3"
 env_logger = "^0.3"
-syslog = "3"
 serde = "1.0"
 serde_derive = "1.0"
 serde_json = "1.0"
@@ -22,3 +21,7 @@ ipnetwork = "0.12"
 [dependencies.rusqlite]
 version = "^0.12"
 features = ["bundled"]
+
+[dependencies.syslog]
+git = "https://github.com/vorner/rust-syslog"
+rev = "5e5c72c0e850f0b7429f5645612dfeabde6b08e2"

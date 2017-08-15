@@ -150,7 +150,6 @@ fn main_r() -> errors::Result<i32> {
         return Ok(1);
     }
 
-    eprintln!("pushing login request to duo for {}@{}", user, rhost);
     if client.auth_for(&user, &rhost)? {
         info!("successful duo auth for {}@{}", user, rhost);
         if let Some(ref mut recent_ip) = recent_ip {
