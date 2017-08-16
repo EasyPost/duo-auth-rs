@@ -126,7 +126,7 @@ fn main_r() -> errors::Result<i32> {
     let rhost = match rhost_raw {
         IpAddr::V4(v4_addr) => v4_addr.to_ipv6_mapped(),
         IpAddr::V6(v6_addr) => v6_addr,
-    }.to_string();
+    };
 
     if config.whitelist.contains(rhost_raw) {
         info!("whitelist match for {}@{}", user, rhost);
@@ -151,7 +151,7 @@ fn main_r() -> errors::Result<i32> {
         return Ok(1);
     }
 
-    if client.auth_for(&user, &rhost)? {
+    if client.auth_for(&user, rhost.to_string().as_str())? {
         info!("successful duo auth for {}@{}", user, rhost);
         if let Some(ref mut recent_ip) = recent_ip {
             recent_ip.set_for(&user, &rhost);
