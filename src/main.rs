@@ -64,7 +64,7 @@ fn get_env_var(s: String) -> Result<String> {
 
 fn main_r() -> errors::Result<i32> {
     let matches = clap::App::new("duo-auth-rs")
-                            .version("0.1.2")
+                            .version("0.1.3")
                             .author("James Brown <jbrown@easypost.com>")
                             .arg(Arg::with_name("stderr")
                                      .short("e")

@@ -1,3 +1,7 @@
+0.1.3
+-----
+- add `mask_ipv6` config option, which causes all IPv6 addresses to be treated as the nearest /64 for purposes of recent IP
+
 0.1.2
 ----
 - Disable printing to stderr because OpenSSH never pushes `pam_info` messages until an after-login banner anyway
