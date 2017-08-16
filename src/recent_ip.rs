@@ -1,5 +1,6 @@
 use std::path::Path;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::net::Ipv6Addr;
 
 use rusqlite;
 
@@ -30,6 +31,7 @@ use self::errors::*;
 pub(crate) struct RecentIp {
     conn: rusqlite::Connection,
     expiration: Duration,
+    mask_ipv6: bool,
 }
 
 
@@ -55,11 +57,37 @@ impl RecentIp {
         }
         Ok(RecentIp {
             conn: conn,
-            expiration: c.recent_ip_duration
+            expiration: c.recent_ip_duration,
+            mask_ipv6: c.mask_ipv6,
         })
     }
 
-    pub fn check_for(&self, user: &str, rhost: &str) -> Result<bool> {
+    /// Potentially normalize an address. This masks V6 addresses to the closest /64 to make
+    /// rotating ephemeral addresses less annoying
+    fn normalize_addr(&self, a: &Ipv6Addr) -> Ipv6Addr {
+        if self.mask_ipv6 {
+            if a.to_ipv4().is_some() {
+                *a
+            } else {
+                let segs = a.segments();
+                Ipv6Addr::new(
+                    segs[0],
+                    segs[1],
+                    segs[2],
+                    segs[3],
+                    0,
+                    0,
+                    0,
+                    0
+                )
+            }
+        } else {
+            *a
+        }
+    }
+
+    pub fn check_for(&self, user: &str, rhost: &Ipv6Addr) -> Result<bool> {
+        let rhost = self.normalize_addr(rhost).to_string();
         match self.conn.query_row("SELECT last_success_at FROM logins WHERE user = ? AND rhost = ?", &[&user, &rhost], |row| {
             let ts: i64 = row.get(0);
             let now = now();
@@ -90,8 +118,9 @@ impl RecentIp {
         Ok(())
     }
 
-    pub fn set_for(&mut self, user: &str, rhost: &str) -> () {
-        if let Err(e) = self.set_inner(user, rhost) {
+    pub fn set_for(&mut self, user: &str, rhost: &Ipv6Addr) -> () {
+        let rhost = self.normalize_addr(rhost).to_string();
+        if let Err(e) = self.set_inner(user, &rhost) {
             error!("Error updating DB: {:?}", e);
         }
     }
