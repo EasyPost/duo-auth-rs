@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 use std::time::SystemTime;
-use std::io::Read;
 
+use serde_json::Value;
 use reqwest::{self, Url, Method};
 use reqwest::header;
 use url::form_urlencoded::Serializer;
@@ -13,9 +13,19 @@ use itertools::Itertools;
 use config;
 
 pub(crate) mod errors {
+    use duo_client::DuoResponseStatus;
+
+
     error_chain! {
         types {
             Error, ErrorKind, ResultExt, Result;
+        }
+
+        errors {
+            InvalidResponse(status: DuoResponseStatus) {
+                description("invalid duo response")
+                display("invalid duo response: {:?}", status)
+            }
         }
 
         foreign_links {
@@ -48,6 +58,83 @@ struct DuoRequest<'a> {
 }
 
 
+#[derive(Debug)]
+pub enum DuoResponseStatus {
+    Ok,
+    Fail { code: i64 , message: String, message_detail: Option<String> },
+    NoStat,
+    Other(String)
+}
+
+#[derive(Debug)]
+struct OkDuoResponse {
+    stat: DuoResponseStatus,
+    json: Value
+}
+
+impl OkDuoResponse {
+    fn response_json(&self) -> &Value {
+        &self.json
+    }
+}
+
+#[derive(Debug)]
+struct DuoResponse {
+    status: reqwest::StatusCode,
+    stat: DuoResponseStatus,
+    json: Option<Value>
+}
+
+impl DuoResponse {
+    fn status(&self) -> reqwest::StatusCode {
+        self.status
+    }
+
+    /// Consume this response body and raise a Result. In the Ok case, we are
+    /// guaranteed to have an "OK" stat and a valid response body
+    fn consume(self) -> Result<OkDuoResponse> {
+        match self.stat {
+            DuoResponseStatus::Ok => if let Some(json) = self.json {
+                    Ok(OkDuoResponse {
+                        stat: DuoResponseStatus::Ok,
+                        json: json
+                    })
+                } else {
+                    Err(ErrorKind::InvalidResponse(self.stat).into())
+            },
+            v => Err(ErrorKind::InvalidResponse(v).into())
+        }
+    }
+
+    fn from_response(mut r: reqwest::Response) -> Result<Self> {
+        let data: Value = r.json()?;
+        let stat = match data["stat"].as_str() {
+            Some("OK") => DuoResponseStatus::Ok,
+            Some("FAIL") => {
+                let message = data["message"].as_str().unwrap_or("unknown").to_owned();
+                let message_detail = data["message_detail"].as_str().map(|o| o.to_owned());
+                let code = data["code"].as_i64().unwrap_or(0);
+                DuoResponseStatus::Fail {
+                    code: code,
+                    message: message,
+                    message_detail: message_detail
+                }
+            }
+            Some(s) => DuoResponseStatus::Other(s.to_owned()),
+            None => DuoResponseStatus::NoStat,
+        };
+        Ok(DuoResponse {
+            status: r.status(),
+            json: match stat {
+                DuoResponseStatus::Ok => data.get("response").map(|i| i.to_owned()),
+                _ => None,
+            },
+            stat: stat,
+        })
+    }
+}
+
+
 impl<'a> DuoRequest<'a> {
     fn new(method: Method, path: &'a str) -> DuoRequest<'a> {
         DuoRequest {
@@ -73,7 +160,7 @@ impl<'a> DuoRequest<'a> {
         signer.result().hexlify().into()
     }
 
-    fn run(self, client: &DuoClient) -> Result<reqwest::Response> {
+    fn run(self, client: &DuoClient) -> Result<DuoResponse> {
         let mut ser = Serializer::new(String::new());
         for (key, value) in self.params.iter() {
             ser.append_pair(&key, &value);
@@ -98,7 +185,7 @@ impl<'a> DuoRequest<'a> {
             rb.body(body);
         }
         let resp = rb.send()?;
-        Ok(resp)
+        DuoResponse::from_response(resp)
     }
 
     fn set_param<K: Into<String>, V: Into<String>>(&mut self, key: K, value: V) {
@@ -124,7 +211,7 @@ impl DuoClient {
             base_url: Url::parse(&config.base)?,
             client: reqwest::Client::builder()?
                 .timeout(config.request_timeout)
-                .build()?
+                .build()?,
         })
     }
 
@@ -140,13 +227,15 @@ impl DuoClient {
         req.set_param("ipaddr", rhost);
         req.set_param("factor", "push");
         req.set_param("device", "auto");
-        let mut resp = req.run(&self)?;
-        // read the whole body before raising any errors
-        let mut body = String::new();
-        resp.read_to_string(&mut body)?;
-        if let Err(e) = resp.error_for_status() {
-            return Err(e).chain_err(|| format!("error from server: {}", body));
-        }
-        Ok(true)
+        let resp = req.run(&self)?.consume()?;
+        let result = resp.response_json()["result"].as_str().ok_or("missing result")?.to_owned();
+        return Ok(match result.as_str() {
+            "allow" => true,
+            "deny" => false,
+            other => {
+                warn!("unexpected duo auth_status result: {:?}", other);
+                false
+            }
+        })
     }
 }
