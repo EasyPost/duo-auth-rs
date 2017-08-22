@@ -1,3 +1,8 @@
+0.1.4
+-----
+- Bump some requirements
+- Actually parse result JSON
+
 0.1.3
 -----
 - add `mask_ipv6` config option, which causes all IPv6 addresses to be treated as the nearest /64 for purposes of recent IP
