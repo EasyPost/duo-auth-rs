@@ -27,10 +27,10 @@ mod ip_whitelist;
 mod logger;
 
 mod errors {
-    error_chain!{
+    error_chain! {
         links {
             DuoClient(::duo_client::errors::Error, ::duo_client::errors::ErrorKind);
-            Db(::recent_ip::errors::Error, ::recent_ip::errors::ErrorKind);
+            RecentIp(::recent_ip::errors::Error, ::recent_ip::errors::ErrorKind);
         }
 
         foreign_links {
@@ -140,9 +140,16 @@ fn main_r() -> errors::Result<i32> {
     };
 
     if let Some(ref recent_ip) = recent_ip {
-        if recent_ip.check_for(&user, &rhost)? {
-            info!("recent_ip match for {}@{}", user, rhost);
-            return Ok(0);
+        match recent_ip.check_for(&user, &rhost) {
+            Ok(true) => {
+                info!("recent_ip match for {}@{}", user, rhost);
+                return Ok(0);
+            }
+            Err(::recent_ip::errors::Error(::recent_ip::errors::ErrorKind::FailureBackoff, _)) => {
+                warn!("too many recent failures for {}@{}", user, rhost);
+                return Ok(1);
+            }
+            _ => { }
         }
     }
 
@@ -154,11 +161,14 @@ fn main_r() -> errors::Result<i32> {
     if client.auth_for(&user, rhost.to_string().as_str())? {
         info!("successful duo auth for {}@{}", user, rhost);
         if let Some(ref mut recent_ip) = recent_ip {
-            recent_ip.set_for(&user, &rhost);
+            recent_ip.set_for(&user, &rhost, true);
         }
         Ok(0)
     } else {
         info!("auth failed via duo for {}@{}", user, rhost);
+        if let Some(ref mut recent_ip) = recent_ip {
+            recent_ip.set_for(&user, &rhost, false);
+        }
         Ok(1)
     }
 }
