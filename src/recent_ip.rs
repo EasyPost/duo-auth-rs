@@ -36,7 +36,7 @@ pub(crate) struct RecentIp {
     conn: rusqlite::Connection,
     expiration: Duration,
     backoff_window: Duration,
-    consecutive_failures: i16,
+    consecutive_failures: u16,
     mask_ipv6: bool,
 }
 
@@ -98,21 +98,21 @@ impl RecentIp {
         let norm_rhost = self.normalize_addr(rhost).to_string();
         match self.conn.query_row("SELECT timestamp, failure_count FROM logins WHERE user = ? AND rhost = ?", &[&user, &norm_rhost], |row| {
             let ts: i64 = row.get(0);
-            let fails: bool = row.get(1);
+            let fails: u16 = row.get(1);
             let now = now();
             if ts > now {
                 warn!("warning: login from the FUTURE! user={:?}, rhost={:?}, ts={:?}, now={:?}", user, rhost, ts, now);
-                (Duration::from_secs(0))
+                (Duration::from_secs(0), fails)
             } else {
-                (Duration::from_secs((now - ts) as u64), success)
+                (Duration::from_secs((now - ts) as u64), fails)
             }
         }) {
-            Ok(time_delta, fails) => {
+            Ok((time_delta, fails)) => {
                 debug!("recent_ip match was {:?} ago; expiration is {:?}, fail count is {:?}", time_delta, self.expiration, fails);
-                if fails < self.consecutive_failures || time_delta > self.backoff_window {
+                if (fails < self.consecutive_failures) || (time_delta > self.backoff_window) {
                     Ok(time_delta < self.expiration)
                 } else {
-                    Err(FailureBackoff)
+                    Err(ErrorKind::FailureBackoff.into())
                 }
             },
             Err(rusqlite::Error::QueryReturnedNoRows) => Ok(false),
@@ -125,7 +125,8 @@ impl RecentIp {
         let old_time = now - (2 * self.expiration.as_secs()) as i64;
         let xact = self.conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
         if success {
-            xact.execute("INSERT OR REPLACE INTO logins (user, rhost, timestamp, failure_count) VALUES (?, ?, ?, 0)", &[&user, &rhost, &now])?;
+            xact.execute("INSERT OR REPLACE INTO logins (user, rhost, timestamp, failure_count) \
+            VALUES (?, ?, ?, 0)", &[&user, &rhost, &now])?;
         } else {
             let rows_updated = xact.execute("UPDATE logins \
                                             SET timestamp = ?, failure_count = failure_count + 1 \
@@ -140,9 +141,9 @@ impl RecentIp {
         Ok(())
     }
 
-    pub fn set_for(&mut self, user: &str, rhost: &Ipv6Addr) -> () {
+    pub fn set_for(&mut self, user: &str, rhost: &Ipv6Addr, success: bool) -> () {
         let rhost = self.normalize_addr(rhost).to_string();
-        if let Err(e) = self.set_inner(user, &rhost) {
+        if let Err(e) = self.set_inner(user, &rhost, success) {
             error!("Error updating DB: {:?}", e);
         }
     }
