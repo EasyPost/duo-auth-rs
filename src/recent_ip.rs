@@ -18,6 +18,10 @@ pub(crate) mod errors {
                 description("no db in config")
                 display("no db in config")
             }
+            FailureBackoff {
+                description("too many consecutive failures")
+                display("too many consecutive failures")
+            }
         }
 
         foreign_links {
@@ -31,6 +35,8 @@ use self::errors::*;
 pub(crate) struct RecentIp {
     conn: rusqlite::Connection,
     expiration: Duration,
+    backoff_window: Duration,
+    consecutive_failures: i16,
     mask_ipv6: bool,
 }
 
@@ -52,12 +58,14 @@ impl RecentIp {
         let mut conn = rusqlite::Connection::open(path)?;
         {
             let xact = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
-            xact.execute("CREATE TABLE IF NOT EXISTS logins (user STRING NOT NULL, rhost STRING NOT NULL, last_success_at INTEGER, UNIQUE (user, rhost));", &[])?;
+            xact.execute("CREATE TABLE IF NOT EXISTS logins (user STRING NOT NULL, rhost STRING NOT NULL, timestamp INTEGER, failure_count INTEGER default 0, UNIQUE (user, rhost));", &[])?;
             xact.commit()?;
         }
         Ok(RecentIp {
             conn: conn,
             expiration: c.recent_ip_duration,
+            backoff_window: c.backoff_window,
+            consecutive_failures: c.consecutive_failures,
             mask_ipv6: c.mask_ipv6,
         })
     }
@@ -87,33 +95,47 @@ impl RecentIp {
     }
 
     pub fn check_for(&self, user: &str, rhost: &Ipv6Addr) -> Result<bool> {
-        let rhost = self.normalize_addr(rhost).to_string();
-        match self.conn.query_row("SELECT last_success_at FROM logins WHERE user = ? AND rhost = ?", &[&user, &rhost], |row| {
+        let norm_rhost = self.normalize_addr(rhost).to_string();
+        match self.conn.query_row("SELECT timestamp, failure_count FROM logins WHERE user = ? AND rhost = ?", &[&user, &norm_rhost], |row| {
             let ts: i64 = row.get(0);
+            let fails: bool = row.get(1);
             let now = now();
             if ts > now {
                 warn!("warning: login from the FUTURE! user={:?}, rhost={:?}, ts={:?}, now={:?}", user, rhost, ts, now);
-                Duration::from_secs(0)
+                (Duration::from_secs(0))
             } else {
-                Duration::from_secs((now - ts) as u64)
+                (Duration::from_secs((now - ts) as u64), success)
             }
         }) {
-            Ok(time_delta) => {
-                debug!("recent_ip match was {:?} ago; expiration is {:?}", time_delta, self.expiration);
-                Ok(time_delta < self.expiration)
+            Ok(time_delta, fails) => {
+                debug!("recent_ip match was {:?} ago; expiration is {:?}, fail count is {:?}", time_delta, self.expiration, fails);
+                if fails < self.consecutive_failures || time_delta > self.backoff_window {
+                    Ok(time_delta < self.expiration)
+                } else {
+                    Err(FailureBackoff)
+                }
             },
             Err(rusqlite::Error::QueryReturnedNoRows) => Ok(false),
             Err(e) => Err(e.into()),
         }
     }
 
-    fn set_inner(&mut self, user: &str, rhost: &str) -> rusqlite::Result<()> {
+    fn set_inner(&mut self, user: &str, rhost: &str, success: bool) -> rusqlite::Result<()> {
         let now = now();
         let old_time = now - (2 * self.expiration.as_secs()) as i64;
         let xact = self.conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
-        xact.execute("INSERT OR REPLACE INTO logins VALUES (?, ?, ?)", &[&user, &rhost, &now])?;
+        if success {
+            xact.execute("INSERT OR REPLACE INTO logins (user, rhost, timestamp, failure_count) VALUES (?, ?, ?, 0)", &[&user, &rhost, &now])?;
+        } else {
+            let rows_updated = xact.execute("UPDATE logins \
+                                            SET timestamp = ?, failure_count = failure_count + 1 \
+                                            WHERE user = ? and rhost = ?", &[&now, &user, &rhost])?;
+            if rows_updated != 1 {
+                xact.execute("INSERT INTO logins (user, rhost, timestamp, failure_count) VALUES (?, ?, ?, 1):", &[&user, &rhost, &now])?;
+            }
+        }
         // prune old dead stuff here, too
-        xact.execute("DELETE FROM logins WHERE last_success_at < ?", &[&old_time])?;
+        xact.execute("DELETE FROM logins WHERE timestamp < ?", &[&old_time])?;
         xact.commit()?;
         Ok(())
     }
