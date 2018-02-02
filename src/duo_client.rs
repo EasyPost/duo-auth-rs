@@ -227,8 +227,17 @@ impl DuoClient {
         req.set_param("ipaddr", rhost);
         req.set_param("factor", "push");
         req.set_param("device", "auto");
-        let resp = req.run(&self)?.consume()?;
-        let result = resp.response_json()["result"].as_str().ok_or("missing result")?.to_owned();
+
+        let resp = match req.run(&self) {
+            Err(x) => {
+                warn!("Error from req.run: {:?}", x);
+                return Ok(false);
+            },
+            Ok(x) => x,
+        };
+
+        let result = resp.consume()?.response_json()["result"].as_str().ok_or("missing result")?.to_owned();
+
         return Ok(match result.as_str() {
             "allow" => true,
             "deny" => false,

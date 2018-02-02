@@ -1,6 +1,6 @@
 [package]
 name = "duo-auth-rs"
-version = "0.1.4"
+version = "0.1.5"
 authors = ["James Brown <jbrown@easypost.com>"]
 
 [dependencies]
@@ -13,12 +13,12 @@ serde = "1.0"
 serde_derive = "1.0"
 serde_json = "1.0"
 log-panics = { version = "1.1" , features = ["with-backtrace"] }
-error-chain = "0.10"
+error-chain = "0.11"
 url = "1"
 itertools = "0.6"
 ipnetwork = "0.12"
 syslog = "^3.3.0"
 
 [dependencies.rusqlite]
-version = "^0.12"
+version = "^0.13"
 features = ["bundled"]

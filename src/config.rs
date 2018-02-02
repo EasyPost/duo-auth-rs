@@ -17,7 +17,9 @@ struct RawConfig {
     pub recent_ip_file: Option<String>,
     pub recent_ip_duration_s: Option<u64>,
     pub whitelisted_networks: Option<Vec<String>>,
-    pub mask_ipv6: Option<bool>
+    pub mask_ipv6: Option<bool>,
+    pub backoff_window_s: Option<u64>,
+    pub consecutive_failures: Option<u16>,
 }
 
 pub(crate) struct Config {
@@ -29,6 +31,8 @@ pub(crate) struct Config {
     pub recent_ip_duration: Duration,
     pub whitelist: IpWhitelist,
     pub mask_ipv6: bool,
+    pub backoff_window: Duration,
+    pub consecutive_failures: u16,
 }
 
 
@@ -43,7 +47,9 @@ impl Config {
             recent_ip_file: r.recent_ip_file,
             recent_ip_duration: Duration::from_secs(r.recent_ip_duration_s.unwrap_or(28_800)),
             whitelist: whitelist,
-            mask_ipv6: r.mask_ipv6.unwrap_or(false)
+            mask_ipv6: r.mask_ipv6.unwrap_or(false),
+            backoff_window: Duration::from_secs(r.backoff_window_s.unwrap_or(60)),
+            consecutive_failures: r.consecutive_failures.unwrap_or(4),
         })
 
     }
