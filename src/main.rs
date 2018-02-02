@@ -158,6 +158,11 @@ fn main_r() -> errors::Result<i32> {
         return Ok(1);
     }
 
+    // record the failure initially and then let the success overwrite it.
+    if let Some(ref mut recent_ip) = recent_ip {
+        recent_ip.set_for(&user, &rhost, false);
+    }
+
     if client.auth_for(&user, rhost.to_string().as_str())? {
         info!("successful duo auth for {}@{}", user, rhost);
         if let Some(ref mut recent_ip) = recent_ip {
@@ -166,9 +171,6 @@ fn main_r() -> errors::Result<i32> {
         Ok(0)
     } else {
         info!("auth failed via duo for {}@{}", user, rhost);
-        if let Some(ref mut recent_ip) = recent_ip {
-            recent_ip.set_for(&user, &rhost, false);
-        }
         Ok(1)
     }
 }

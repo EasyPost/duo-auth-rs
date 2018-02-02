@@ -1,6 +1,6 @@
+use std::net::Ipv6Addr;
 use std::path::Path;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
-use std::net::Ipv6Addr;
 
 use rusqlite;
 
@@ -58,7 +58,12 @@ impl RecentIp {
         let mut conn = rusqlite::Connection::open(path)?;
         {
             let xact = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
-            xact.execute("CREATE TABLE IF NOT EXISTS logins (user STRING NOT NULL, rhost STRING NOT NULL, timestamp INTEGER, failure_count INTEGER default 0, UNIQUE (user, rhost));", &[])?;
+            xact.execute("CREATE TABLE IF NOT EXISTS logins (\
+                              user STRING NOT NULL, \
+                              rhost STRING NOT NULL, \
+                              timestamp INTEGER, \
+                              failure_count INTEGER default 0, \
+                              UNIQUE (user, rhost));", &[])?;
             xact.commit()?;
         }
         Ok(RecentIp {
@@ -70,32 +75,31 @@ impl RecentIp {
         })
     }
 
-    /// Potentially normalize an address. This masks V6 addresses to the closest /64 to make
+    /// Potentially normalize an address and convert to string.
+    /// This masks V6 addresses to the closest /64 to make
     /// rotating ephemeral addresses less annoying
-    fn normalize_addr(&self, a: &Ipv6Addr) -> Ipv6Addr {
-        if self.mask_ipv6 {
-            if a.to_ipv4().is_some() {
-                *a
-            } else {
-                let segs = a.segments();
-                Ipv6Addr::new(
-                    segs[0],
-                    segs[1],
-                    segs[2],
-                    segs[3],
-                    0,
-                    0,
-                    0,
-                    0
-                )
-            }
+    fn normalize_addr(&self, a: &Ipv6Addr) -> String {
+        if let Some(x) = a.to_ipv4() {
+            x.to_string()
+        } else if self.mask_ipv6 {
+            let segs = a.segments();
+            Ipv6Addr::new(
+                segs[0],
+                segs[1],
+                segs[2],
+                segs[3],
+                0,
+                0,
+                0,
+                0
+            ).to_string()
         } else {
-            *a
+            a.to_string()
         }
     }
 
     pub fn check_for(&self, user: &str, rhost: &Ipv6Addr) -> Result<bool> {
-        let norm_rhost = self.normalize_addr(rhost).to_string();
+        let norm_rhost = self.normalize_addr(rhost);
         match self.conn.query_row("SELECT timestamp, failure_count FROM logins WHERE user = ? AND rhost = ?", &[&user, &norm_rhost], |row| {
             let ts: i64 = row.get(0);
             let fails: u16 = row.get(1);
@@ -108,11 +112,17 @@ impl RecentIp {
             }
         }) {
             Ok((time_delta, fails)) => {
-                debug!("recent_ip match was {:?} ago; expiration is {:?}, fail count is {:?}", time_delta, self.expiration, fails);
-                if (fails < self.consecutive_failures) || (time_delta > self.backoff_window) {
+                info!("recent_ip match was {:?} ago; expiration is {:?}, fail count is {:?}", time_delta, self.expiration, fails);
+                if fails == 0 {
+                    // most recent try from this IP was successful, see if it was within
+                    // the expiration window
                     Ok(time_delta < self.expiration)
-                } else {
+                } else if (fails >= self.consecutive_failures) && (time_delta <= self.backoff_window) {
+                    // at least max failures within the consecutive failure window
                     Err(ErrorKind::FailureBackoff.into())
+                } else {
+                    // send a new push
+                    Ok(false)
                 }
             },
             Err(rusqlite::Error::QueryReturnedNoRows) => Ok(false),
@@ -125,25 +135,31 @@ impl RecentIp {
         let old_time = now - (2 * self.expiration.as_secs()) as i64;
         let xact = self.conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
         if success {
-            xact.execute("INSERT OR REPLACE INTO logins (user, rhost, timestamp, failure_count) \
-            VALUES (?, ?, ?, 0)", &[&user, &rhost, &now])?;
+            let rows_inserted = xact.execute("INSERT OR REPLACE INTO logins (user, rhost, timestamp, failure_count) \
+                                              VALUES (?, ?, ?, 0)", &[&user, &rhost, &now])?;
+            debug!("successful login rows inserted: {:?}", rows_inserted);
         } else {
-            let rows_updated = xact.execute("UPDATE logins \
-                                            SET timestamp = ?, failure_count = failure_count + 1 \
-                                            WHERE user = ? and rhost = ?", &[&now, &user, &rhost])?;
+            let rows_updated = xact.execute(
+                "UPDATE logins SET timestamp = ?, failure_count = failure_count + 1 \
+                 WHERE user = ? AND rhost = ?", &[&now, &user, &rhost])?;
+            debug!("rows updated for rhost {:?}: {:?}", rhost, rows_updated);
             if rows_updated != 1 {
-                xact.execute("INSERT INTO logins (user, rhost, timestamp, failure_count) VALUES (?, ?, ?, 1):", &[&user, &rhost, &now])?;
+                let rows_inserted = xact.execute("INSERT INTO logins (user, rhost, timestamp, failure_count) \
+                                                 VALUES (?, ?, ?, 1)", &[&user, &rhost, &now])?;
+                debug!("rows inserted: {:?}", rows_inserted);
             }
         }
         // prune old dead stuff here, too
-        xact.execute("DELETE FROM logins WHERE timestamp < ?", &[&old_time])?;
+        let rows_deleted = xact.execute("DELETE FROM logins WHERE timestamp < ?", &[&old_time])?;
+        debug!("rows deleteed: {:?}", rows_deleted);
         xact.commit()?;
         Ok(())
     }
 
     pub fn set_for(&mut self, user: &str, rhost: &Ipv6Addr, success: bool) -> () {
-        let rhost = self.normalize_addr(rhost).to_string();
-        if let Err(e) = self.set_inner(user, &rhost, success) {
+        let norm_rhost = self.normalize_addr(rhost);
+        debug!("norm_rhost is {:?}", norm_rhost);
+        if let Err(e) = self.set_inner(user, &norm_rhost, success) {
             error!("Error updating DB: {:?}", e);
         }
     }
