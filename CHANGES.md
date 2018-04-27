@@ -1,3 +1,8 @@
+0.1.5
+-----
+- Bump rusqlite dependency
+- Use `$CARGO_PKG_VERSION` to populate user-agent and --help version numbers (thank you for the suggestion, @simlay)
+
 0.1.4
 -----
 - Bump some requirements
