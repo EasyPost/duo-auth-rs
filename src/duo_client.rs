@@ -179,7 +179,7 @@ impl<'a> DuoRequest<'a> {
         let mut rb = client.client.request(self.method, url)?;
         rb.basic_auth(client.ikey.clone(), Some(signature));
         rb.header(header::Date(self.date));
-        rb.header(header::UserAgent::new("duo-auth-rs/0.1.0"));
+        rb.header(header::UserAgent::new(concat!("duo-auth-rs/", env!("CARGO_PKG_VERSION"))));
         if can_have_body {
             rb.header(header::ContentType::form_url_encoded());
             rb.body(body);

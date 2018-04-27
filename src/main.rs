@@ -63,8 +63,9 @@ fn get_env_var(s: String) -> Result<String> {
 
 
 fn main_r() -> errors::Result<i32> {
-    let matches = clap::App::new("duo-auth-rs")
-                            .version("0.1.4")
+    let matches = clap::App::new(env!("CARGO_PKG_NAME"))
+                            .version(env!("CARGO_PKG_VERSION"))
+                            .about(env!("CARGO_PKG_DESCRIPTION"))
                             .author("James Brown <jbrown@easypost.com>")
                             .arg(Arg::with_name("stderr")
                                      .short("e")
