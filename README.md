@@ -9,3 +9,5 @@ it's a huge pain in the butt to get prompted for a password on every login).
 
 Configuration should follow the format described in `example_config.json`; the default is looked for at
 `/etc/duo-auth-rs.json`.
+
+This software is licensed under the ISC license, a copy of which can be found in the file [LICENSE.txt](LICENSE.txt).
