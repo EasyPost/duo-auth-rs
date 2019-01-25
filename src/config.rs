@@ -3,6 +3,7 @@ use std::fs::File;
 use std::time::Duration;
 
 use serde_json;
+use serde_derive::Deserialize;
 
 use super::errors::*;
 use crate::ip_whitelist::IpWhitelist;
@@ -34,7 +35,11 @@ pub(crate) struct Config {
 
 impl Config {
     fn from_raw_config(r: RawConfig) -> Result<Self> {
-        let whitelist = IpWhitelist::from_vec(r.whitelisted_networks)?;
+        let whitelist = if let Some(networks) = r.whitelisted_networks {
+            IpWhitelist::new(networks)?
+        } else {
+            IpWhitelist::empty()
+        };
         Ok(Config {
             ikey: r.ikey,
             skey: r.skey,
