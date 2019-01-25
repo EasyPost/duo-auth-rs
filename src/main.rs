@@ -13,6 +13,7 @@ extern crate url;
 extern crate crypto;
 extern crate itertools;
 extern crate ipnetwork;
+extern crate chrono;
 
 use clap::Arg;
 use std::env;
@@ -24,7 +25,6 @@ mod config;
 mod duo_client;
 mod recent_ip;
 mod ip_whitelist;
-mod logger;
 
 mod errors {
     error_chain!{
@@ -103,14 +103,15 @@ fn main_r() -> errors::Result<i32> {
     
     // set up logging
     if matches.is_present("stderr") {
-        env_logger::init().chain_err(|| "cannot initialize env_logger")?;
+        env_logger::init();
     } else {
         let log_level = match env::var("RUST_LOG") {
-            Ok(level) => log::LogLevelFilter::from_str(&level).map_err(|_| ErrorKind::InvalidLogLevel(level.to_owned()))?,
-            _ => log::LogLevelFilter::Info
+            Ok(level) => log::LevelFilter::from_str(&level).map_err(|_| ErrorKind::InvalidLogLevel(level.to_owned()))?,
+            _ => log::LevelFilter::Info
         };
-        logger::init_unix(syslog::Facility::LOG_AUTH, log_level).chain_err(|| "cannot initialize syslog")?;
+        syslog::init_unix(syslog::Facility::LOG_AUTH, log_level).chain_err(|| "cannot initialize syslog")?;
     }
+    log_panics::init();
 
     let config = config::Config::from_path(Path::new(matches.value_of("config_file").unwrap()))?;
 

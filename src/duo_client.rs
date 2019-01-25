@@ -1,9 +1,8 @@
 use std::collections::BTreeMap;
-use std::time::SystemTime;
 
+use chrono::{DateTime, Utc};
 use serde_json::Value;
 use reqwest::{self, Url, Method};
-use reqwest::header;
 use url::form_urlencoded::Serializer;
 use crypto::hmac::Hmac;
 use crypto::sha1::Sha1;
@@ -53,7 +52,7 @@ impl Hexlify for MacResult {
 struct DuoRequest<'a> {
     method: Method,
     path: &'a str,
-    date: header::HttpDate,
+    date: DateTime<Utc>,
     params: BTreeMap<String, String>
 }
 
@@ -140,7 +139,7 @@ impl<'a> DuoRequest<'a> {
         DuoRequest {
             method,
             path,
-            date: header::HttpDate::from(SystemTime::now()),
+            date: Utc::now(),
             params: BTreeMap::new()
         }
     }
@@ -148,7 +147,7 @@ impl<'a> DuoRequest<'a> {
 
     fn sign(&self, body: &str, client: &DuoClient) -> String {
         let to_sign = &[
-            self.date.to_string(),
+            self.date.to_rfc2822(),
             self.method.to_string().to_uppercase(),
             client.base_url.host_str().expect("URL must have a host...").to_owned(),
             self.path.to_owned(),
@@ -170,20 +169,21 @@ impl<'a> DuoRequest<'a> {
         let mut url = client.base_url.clone();
         url.set_path(self.path);
         let can_have_body = match self.method {
-            Method::Get | Method::Head => false,
+            Method::GET | Method::HEAD => false,
             _ => true
         };
         if !can_have_body {
             url.set_query(Some(&body));
         }
-        let mut rb = client.client.request(self.method, url)?;
-        rb.basic_auth(client.ikey.clone(), Some(signature));
-        rb.header(header::Date(self.date));
-        rb.header(header::UserAgent::new(concat!("duo-auth-rs/", env!("CARGO_PKG_VERSION"))));
-        if can_have_body {
-            rb.header(header::ContentType::form_url_encoded());
-            rb.body(body);
-        }
+        let rb = client.client.request(self.method, url)
+            .basic_auth(client.ikey.clone(), Some(signature))
+            .header("Date", self.date.to_rfc2822())
+            .header("User-Agent", concat!("duo-auth-rs/", env!("CARGO_PKG_VERSION")));
+        let rb = if can_have_body {
+            rb.header("Content-Type", "application/x-www-form-urlencoded").body(body)
+        } else {
+            rb
+        };
         let resp = rb.send()?;
         DuoResponse::from_response(resp)
     }
@@ -209,20 +209,20 @@ impl DuoClient {
             ikey: config.ikey.clone(),
             skey: config.skey.clone(),
             base_url: Url::parse(&config.base)?,
-            client: reqwest::Client::builder()?
+            client: reqwest::Client::builder()
                 .timeout(config.request_timeout)
                 .build()?,
         })
     }
 
     pub fn check(&mut self) -> Result<bool> {
-        let req = DuoRequest::new(Method::Get, "/auth/v2/check");
+        let req = DuoRequest::new(Method::GET, "/auth/v2/check");
         let resp = req.run(&self)?;
         Ok(resp.status().is_success())
     }
 
     pub fn auth_for(&mut self, user: &str, rhost: &str) -> Result<bool> {
-        let mut req = DuoRequest::new(Method::Post, "/auth/v2/auth");
+        let mut req = DuoRequest::new(Method::POST, "/auth/v2/auth");
         req.set_param("username", user);
         req.set_param("ipaddr", rhost);
         req.set_param("factor", "push");
