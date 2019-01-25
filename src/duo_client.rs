@@ -9,10 +9,10 @@ use crypto::sha1::Sha1;
 use crypto::mac::{Mac, MacResult};
 use itertools::Itertools;
 
-use config;
+use crate::config;
 
 pub(crate) mod errors {
-    use duo_client::DuoResponseStatus;
+    use crate::duo_client::DuoResponseStatus;
 
 
     error_chain! {

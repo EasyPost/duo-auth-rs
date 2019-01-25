@@ -5,7 +5,7 @@ use std::time::Duration;
 use serde_json;
 
 use super::errors::*;
-use ip_whitelist::IpWhitelist;
+use crate::ip_whitelist::IpWhitelist;
 
 
 #[derive(Deserialize, Debug)]

@@ -29,8 +29,8 @@ mod ip_whitelist;
 mod errors {
     error_chain!{
         links {
-            DuoClient(::duo_client::errors::Error, ::duo_client::errors::ErrorKind);
-            Db(::recent_ip::errors::Error, ::recent_ip::errors::ErrorKind);
+            DuoClient(crate::duo_client::errors::Error, crate::duo_client::errors::ErrorKind);
+            Db(crate::recent_ip::errors::Error, crate::recent_ip::errors::ErrorKind);
         }
 
         foreign_links {
@@ -53,7 +53,7 @@ mod errors {
     }
 }
 
-use errors::*;
+use crate::errors::*;
 
 
 fn get_env_var(s: String) -> Result<String> {

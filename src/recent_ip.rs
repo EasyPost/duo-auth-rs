@@ -4,7 +4,7 @@ use std::net::Ipv6Addr;
 
 use rusqlite;
 
-use config;
+use crate::config;
 
 
 pub(crate) mod errors {

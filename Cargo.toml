@@ -4,6 +4,7 @@ version = "0.1.5"
 authors = ["James Brown <jbrown@easypost.com>", "Jared Greeno <jared@easypost.com>"]
 description = "Small binary that implements Duo push authentication and incorporates a 'recent ip' whitelist"
 license = "ISC"
+edition = "2018"
 
 [dependencies]
 reqwest = "^0.9.8"
