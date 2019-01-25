@@ -1,25 +1,14 @@
-extern crate reqwest;
-extern crate clap;
 #[macro_use] extern crate log;
-extern crate env_logger;
-extern crate log_panics;
-extern crate syslog;
 #[macro_use] extern crate error_chain;
-extern crate serde;
-#[macro_use] extern crate serde_derive;
-extern crate serde_json;
-extern crate rusqlite;
-extern crate url;
-extern crate crypto;
-extern crate itertools;
-extern crate ipnetwork;
-extern crate chrono;
 
-use clap::Arg;
 use std::env;
 use std::str::FromStr;
 use std::path::Path;
 use std::net::IpAddr;
+
+use clap::{self, Arg};
+use env_logger;
+use log_panics;
 
 mod config;
 mod duo_client;
