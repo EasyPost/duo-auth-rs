@@ -42,7 +42,7 @@ impl Config {
             request_timeout: Duration::from_millis(r.request_timeout_ms.unwrap_or(60_000)),
             recent_ip_file: r.recent_ip_file,
             recent_ip_duration: Duration::from_secs(r.recent_ip_duration_s.unwrap_or(28_800)),
-            whitelist: whitelist,
+            whitelist,
             mask_ipv6: r.mask_ipv6.unwrap_or(false)
         })
 

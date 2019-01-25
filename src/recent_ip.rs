@@ -56,7 +56,7 @@ impl RecentIp {
             xact.commit()?;
         }
         Ok(RecentIp {
-            conn: conn,
+            conn,
             expiration: c.recent_ip_duration,
             mask_ipv6: c.mask_ipv6,
         })
@@ -118,7 +118,7 @@ impl RecentIp {
         Ok(())
     }
 
-    pub fn set_for(&mut self, user: &str, rhost: &Ipv6Addr) -> () {
+    pub fn set_for(&mut self, user: &str, rhost: &Ipv6Addr) {
         let rhost = self.normalize_addr(rhost).to_string();
         if let Err(e) = self.set_inner(user, &rhost) {
             error!("Error updating DB: {:?}", e);

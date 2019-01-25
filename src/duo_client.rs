@@ -97,7 +97,7 @@ impl DuoResponse {
             DuoResponseStatus::Ok => if let Some(json) = self.json {
                     Ok(OkDuoResponse {
                         stat: DuoResponseStatus::Ok,
-                        json: json
+                        json
                     })
                 } else {
                     Err(ErrorKind::InvalidResponse(self.stat).into())
@@ -115,9 +115,9 @@ impl DuoResponse {
                 let message_detail = data["message_detail"].as_str().map(|o| o.to_owned());
                 let code = data["code"].as_i64().unwrap_or(0);
                 DuoResponseStatus::Fail {
-                    code: code,
-                    message: message,
-                    message_detail: message_detail
+                    code,
+                    message,
+                    message_detail
                 }
             }
             Some(s) => DuoResponseStatus::Other(s.to_owned()),
@@ -129,7 +129,7 @@ impl DuoResponse {
                 DuoResponseStatus::Ok => data.get("response").map(|i| i.to_owned()),
                 _ => None,
             },
-            stat: stat,
+            stat,
         })
     }
 }
@@ -138,8 +138,8 @@ impl DuoResponse {
 impl<'a> DuoRequest<'a> {
     fn new(method: Method, path: &'a str) -> DuoRequest<'a> {
         DuoRequest {
-            method: method,
-            path: path,
+            method,
+            path,
             date: header::HttpDate::from(SystemTime::now()),
             params: BTreeMap::new()
         }
@@ -157,7 +157,7 @@ impl<'a> DuoRequest<'a> {
         let to_sign = to_sign.join("\n");
         let mut signer = Hmac::new(Sha1::new(), &client.skey.as_bytes());
         signer.input(to_sign.as_bytes());
-        signer.result().hexlify().into()
+        signer.result().hexlify()
     }
 
     fn run(self, client: &DuoClient) -> Result<DuoResponse> {
@@ -169,8 +169,8 @@ impl<'a> DuoRequest<'a> {
         let signature = self.sign(&body, client);
         let mut url = client.base_url.clone();
         url.set_path(self.path);
-        let can_have_body = match &self.method {
-            &Method::Get | &Method::Head => false,
+        let can_have_body = match self.method {
+            Method::Get | Method::Head => false,
             _ => true
         };
         if !can_have_body {
@@ -229,7 +229,7 @@ impl DuoClient {
         req.set_param("device", "auto");
         let resp = req.run(&self)?.consume()?;
         let result = resp.response_json()["result"].as_str().ok_or("missing result")?.to_owned();
-        return Ok(match result.as_str() {
+        Ok(match result.as_str() {
             "allow" => true,
             "deny" => false,
             other => {
