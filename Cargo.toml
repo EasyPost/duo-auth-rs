@@ -26,3 +26,7 @@ syslog = "^4.0"
 [dependencies.rusqlite]
 version = "^0.13"
 features = ["bundled"]
+
+[dev-dependencies]
+tempfile = "3.0"
+

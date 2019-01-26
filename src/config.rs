@@ -1,12 +1,14 @@
 use std::path::Path;
 use std::fs::File;
 use std::time::Duration;
+use std::path::PathBuf;
 
 use serde_json;
 use serde_derive::Deserialize;
 
 use super::errors::*;
 use crate::ip_whitelist::IpWhitelist;
+use crate::recent_ip::RecentIp;
 
 
 #[derive(Deserialize, Debug)]
@@ -26,7 +28,7 @@ pub(crate) struct Config {
     pub skey: String,
     pub base: String,
     pub request_timeout: Duration,
-    pub recent_ip_file: Option<String>,
+    pub recent_ip_file: Option<PathBuf>,
     pub recent_ip_duration: Duration,
     pub whitelist: IpWhitelist,
     pub mask_ipv6: bool,
@@ -45,7 +47,7 @@ impl Config {
             skey: r.skey,
             base: r.base,
             request_timeout: Duration::from_millis(r.request_timeout_ms.unwrap_or(60_000)),
-            recent_ip_file: r.recent_ip_file,
+            recent_ip_file: r.recent_ip_file.map(|f| f.into()),
             recent_ip_duration: Duration::from_secs(r.recent_ip_duration_s.unwrap_or(28_800)),
             whitelist,
             mask_ipv6: r.mask_ipv6.unwrap_or(false)
@@ -59,8 +61,20 @@ impl Config {
         Ok(Config::from_raw_config(config)?)
     }
 
-    pub fn has_recent_ip(&self) -> bool {
-        self.recent_ip_file.is_some()
+    pub(crate) fn make_recent_ip(&self) -> Result<Option<RecentIp>> {
+        match self.recent_ip_file.as_ref().map(|path| {
+            RecentIp::try_new(
+                path,
+                self.recent_ip_duration,
+                self.mask_ipv6
+            )
+        }) {
+            // the transpose function in 1.33 will save me from this
+            None => Ok(None),
+            Some(Ok(val)) => Ok(Some(val)),
+            Some(Err(db_error)) => Err(db_error.into())
+        }
+
     }
 }
 

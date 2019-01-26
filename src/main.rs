@@ -124,11 +124,7 @@ fn main_r() -> errors::Result<i32> {
         return Ok(0);
     }
 
-    let mut recent_ip = if config.has_recent_ip() {
-        Some(recent_ip::RecentIp::from_config(&config)?)
-    } else {
-        None
-    };
+    let mut recent_ip = config.make_recent_ip()?;
 
     if let Some(ref recent_ip) = recent_ip {
         if recent_ip.check_for(&user, &rhost)? {

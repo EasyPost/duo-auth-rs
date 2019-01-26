@@ -1,10 +1,8 @@
 use std::path::Path;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, UNIX_EPOCH};
 use std::net::Ipv6Addr;
 
 use rusqlite;
-
-use crate::config;
 
 
 pub(crate) mod errors {
@@ -36,29 +34,42 @@ pub(crate) struct RecentIp {
 
 
 fn now() -> i64 {
-    let now = SystemTime::now();
-    let duration = now.duration_since(UNIX_EPOCH).expect("it should not be before 1970");
+    let duration = UNIX_EPOCH.elapsed().expect("it should not be before 1970");
     duration.as_secs() as i64
 }
 
 
+// Fun fact: the to_ipv5() method on Ipv6Addr now accepts IPv4-compatible addresses,
+// which are impossible to distinguish from loopback addresses
+trait IsIpv4Mapped {
+    fn is_ipv4_mapped(&self) -> bool;
+}
+
+impl IsIpv4Mapped for Ipv6Addr {
+    fn is_ipv4_mapped(&self) -> bool {
+        let segs = self.segments();
+        segs[0] == 0 &&
+            segs[1] == 0 &&
+            segs[2] == 0 &&
+            segs[3] == 0 &&
+            segs[4] == 0 &&
+            segs[5] == 0xffff
+    }
+}
+
+
 impl RecentIp {
-    pub(crate) fn from_config(c: &config::Config) -> Result<RecentIp> {
-        let path = if let Some(ref path) = c.recent_ip_file {
-            Path::new(path)
-        } else {
-            return Err(ErrorKind::NoDbInConfig.into());
-        };
+    pub(crate) fn try_new(path: &Path, expiration: Duration, mask_ipv6: bool) -> Result<Self> {
         let mut conn = rusqlite::Connection::open(path)?;
         {
             let xact = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
             xact.execute("CREATE TABLE IF NOT EXISTS logins (user STRING NOT NULL, rhost STRING NOT NULL, last_success_at INTEGER, UNIQUE (user, rhost));", &[])?;
             xact.commit()?;
         }
-        Ok(RecentIp {
+        Ok(Self {
             conn,
-            expiration: c.recent_ip_duration,
-            mask_ipv6: c.mask_ipv6,
+            expiration,
+            mask_ipv6,
         })
     }
 
@@ -66,7 +77,7 @@ impl RecentIp {
     /// rotating ephemeral addresses less annoying
     fn normalize_addr(&self, a: &Ipv6Addr) -> Ipv6Addr {
         if self.mask_ipv6 {
-            if a.to_ipv4().is_some() {
+            if a.is_ipv4_mapped() {
                 *a
             } else {
                 let segs = a.segments();
@@ -123,5 +134,72 @@ impl RecentIp {
         if let Err(e) = self.set_inner(user, &rhost) {
             error!("Error updating DB: {:?}", e);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+    use std::net::{Ipv6Addr, Ipv4Addr};
+
+    use super::RecentIp;
+    use super::IsIpv4Mapped;
+
+    use tempfile;
+
+    #[test]
+    fn test_is_ipv4_mapped() {
+        let native_ipv6_loopback = "::1".parse::<Ipv6Addr>().unwrap();
+        let mapped_loopback = "127.0.0.1".parse::<Ipv4Addr>().unwrap().to_ipv6_mapped();
+
+        assert_eq!(native_ipv6_loopback.is_ipv4_mapped(), false);
+        assert_eq!(mapped_loopback.is_ipv4_mapped(), true);
+    }
+
+    #[test]
+    fn test_basic() {
+        let tf = tempfile::NamedTempFile::new().unwrap();
+        let mut db = RecentIp::try_new(tf.path(), Duration::from_secs(60), false).unwrap();
+        let good_source_address = "::1".parse::<Ipv6Addr>().unwrap();
+        let bad_source_address = "::2".parse::<Ipv6Addr>().unwrap();
+        let good_ipv4_address = "127.0.0.1".parse::<Ipv4Addr>().unwrap().to_ipv6_mapped();
+        let bad_ipv4_address = "127.0.0.2".parse::<Ipv4Addr>().unwrap().to_ipv6_mapped();
+        assert_eq!(db.check_for("foobar", &good_source_address).unwrap(), false);
+        db.set_for("foobar", &good_source_address);
+        assert_eq!(db.check_for("foobar", &good_source_address).unwrap(), true);
+        assert_eq!(db.check_for("foobar", &bad_source_address).unwrap(), false);
+        assert_eq!(db.check_for("foobar", &good_ipv4_address).unwrap(), false);
+        assert_eq!(db.check_for("foobar", &bad_ipv4_address).unwrap(), false);
+
+        // check v4
+        assert_eq!(db.check_for("ipv4", &good_ipv4_address).unwrap(), false);
+        db.set_for("ipv4", &good_ipv4_address);
+        assert_eq!(db.check_for("ipv4", &good_ipv4_address).unwrap(), true);
+        assert_eq!(db.check_for("ipv4", &bad_ipv4_address).unwrap(), false);
+    }
+
+    #[test]
+    fn test_masking() {
+        let tf = tempfile::NamedTempFile::new().unwrap();
+        let mut db = RecentIp::try_new(tf.path(), Duration::from_secs(60), true).unwrap();
+        let good_source_address = "::1".parse::<Ipv6Addr>().unwrap();
+        let other_good_source_address = "::2".parse::<Ipv6Addr>().unwrap();
+        let bad_source_address = "1234::2".parse::<Ipv6Addr>().unwrap();
+        let good_ipv4_address = "127.0.0.1".parse::<Ipv4Addr>().unwrap().to_ipv6_mapped();
+        let bad_ipv4_address = "127.0.0.2".parse::<Ipv4Addr>().unwrap().to_ipv6_mapped();
+
+        assert_eq!(db.check_for("foobar", &good_source_address).unwrap(), false);
+        db.set_for("foobar", &good_source_address);
+        assert_eq!(db.check_for("foobar", &good_source_address).unwrap(), true);
+        assert_eq!(db.check_for("foobar", &other_good_source_address).unwrap(), true);
+        assert_eq!(db.check_for("foobar", &bad_source_address).unwrap(), false);
+        assert_eq!(db.check_for("foobar", &good_ipv4_address).unwrap(), false);
+        assert_eq!(db.check_for("foobar", &bad_ipv4_address).unwrap(), false);
+
+        // check v4
+        assert_eq!(db.check_for("ipv4", &good_ipv4_address).unwrap(), false);
+        db.set_for("ipv4", &good_ipv4_address);
+        assert_eq!(db.check_for("ipv4", &good_ipv4_address).unwrap(), true);
+        assert_eq!(db.check_for("ipv4", &bad_ipv4_address).unwrap(), false);
     }
 }
