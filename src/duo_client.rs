@@ -4,10 +4,9 @@ use chrono::{DateTime, Utc};
 use serde_json::Value;
 use reqwest::{self, Url, Method};
 use url::form_urlencoded::Serializer;
-use crypto::hmac::Hmac;
-use crypto::sha1::Sha1;
-use crypto::mac::{Mac, MacResult};
-use itertools::Itertools;
+use sha1::Sha1;
+use hmac::{Hmac, Mac};
+use hex;
 
 use crate::config;
 
@@ -38,16 +37,6 @@ pub(crate) mod errors {
 
 use self::errors::*;
 
-trait Hexlify {
-    fn hexlify(&self) -> String;
-}
-
-impl Hexlify for MacResult {
-    fn hexlify(&self) -> String {
-        // This does not feel like an efficient way to do this
-        format!("{:02x}", self.code().iter().format(""))
-    }
-}
 
 struct DuoRequest<'a> {
     method: Method,
@@ -133,6 +122,8 @@ impl DuoResponse {
     }
 }
 
+type HmacSha1 = Hmac<Sha1>;
+
 
 impl<'a> DuoRequest<'a> {
     fn new(method: Method, path: &'a str) -> DuoRequest<'a> {
@@ -154,9 +145,11 @@ impl<'a> DuoRequest<'a> {
             body.to_owned(),
         ];
         let to_sign = to_sign.join("\n");
-        let mut signer = Hmac::new(Sha1::new(), &client.skey.as_bytes());
+        let mut signer = HmacSha1::new_varkey(
+            &client.skey.as_bytes()
+        ).expect("skey must be the right size");
         signer.input(to_sign.as_bytes());
-        signer.result().hexlify()
+        hex::encode(signer.result().code())
     }
 
     fn run(self, client: &DuoClient) -> Result<DuoResponse> {
