@@ -25,7 +25,7 @@ ipnetwork = "^0.12"
 syslog = "^4.0"
 
 [dependencies.rusqlite]
-version = "^0.13"
+version = "^0.16"
 # statically link sqlite
 features = ["bundled"]
 
