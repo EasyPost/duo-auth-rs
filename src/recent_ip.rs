@@ -2,7 +2,8 @@ use std::path::Path;
 use std::time::{Duration, UNIX_EPOCH};
 use std::net::Ipv6Addr;
 
-use rusqlite;
+use rusqlite::{self, NO_PARAMS};
+use rusqlite::types::ToSql;
 
 
 pub(crate) mod errors {
@@ -63,7 +64,7 @@ impl RecentIp {
         let mut conn = rusqlite::Connection::open(path)?;
         {
             let xact = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
-            xact.execute("CREATE TABLE IF NOT EXISTS logins (user STRING NOT NULL, rhost STRING NOT NULL, last_success_at INTEGER, UNIQUE (user, rhost));", &[])?;
+            xact.execute("CREATE TABLE IF NOT EXISTS logins (user STRING NOT NULL, rhost STRING NOT NULL, last_success_at INTEGER, UNIQUE (user, rhost));", NO_PARAMS)?;
             xact.commit()?;
         }
         Ok(Self {
@@ -99,7 +100,7 @@ impl RecentIp {
 
     pub fn check_for(&self, user: &str, rhost: &Ipv6Addr) -> Result<bool> {
         let rhost = self.normalize_addr(rhost).to_string();
-        match self.conn.query_row("SELECT last_success_at FROM logins WHERE user = ? AND rhost = ?", &[&user, &rhost], |row| {
+        match self.conn.query_row("SELECT last_success_at FROM logins WHERE user = ? AND rhost = ?", &[user, rhost.as_str()], |row| {
             let ts: i64 = row.get(0);
             let now = now();
             if ts > now {
@@ -122,7 +123,7 @@ impl RecentIp {
         let now = now();
         let old_time = now - (2 * self.expiration.as_secs()) as i64;
         let xact = self.conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
-        xact.execute("INSERT OR REPLACE INTO logins VALUES (?, ?, ?)", &[&user, &rhost, &now])?;
+        xact.execute("INSERT OR REPLACE INTO logins VALUES (?, ?, ?)", &[&user, &rhost, &now as &ToSql])?;
         // prune old dead stuff here, too
         xact.execute("DELETE FROM logins WHERE last_success_at < ?", &[&old_time])?;
         xact.commit()?;
