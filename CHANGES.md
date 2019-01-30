@@ -1,3 +1,7 @@
+0.2.1
+-----
+- Update rusqlite to 0.16 (bumps statically-linked sqlite to 3.24)
+
 0.2.0
 -----
 - Update to Rust 2018 edition (requires Rust 1.31 or later)
