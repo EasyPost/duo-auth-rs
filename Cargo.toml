@@ -1,6 +1,6 @@
 [package]
 name = "duo-auth-rs"
-version = "0.1.5"
+version = "0.2.0"
 authors = ["James Brown <jbrown@easypost.com>", "Jared Greeno <jared@easypost.com>"]
 description = "Small binary that implements Duo push authentication and incorporates a 'recent ip' whitelist"
 license = "ISC"
@@ -26,6 +26,7 @@ syslog = "^4.0"
 
 [dependencies.rusqlite]
 version = "^0.13"
+# statically link sqlite
 features = ["bundled"]
 
 [dev-dependencies]
