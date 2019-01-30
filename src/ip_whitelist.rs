@@ -9,9 +9,16 @@ pub struct IpWhitelist {
 }
 
 impl IpWhitelist {
-    pub fn from_vec(vs: Option<Vec<String>>) -> Result<Self> {
-        let parsed: Vec<Ipv6Network> = if let Some(vs) = vs {
+    pub fn empty() -> Self {
+        IpWhitelist {
+            whitelist_networks: vec![]
+        }
+    }
+
+    pub fn new<S: AsRef<str>>(vs: Vec<S>) -> Result<Self> {
+        let parsed: Vec<Ipv6Network> = {
             let p_i: Result<Vec<Ipv6Network>> = vs.into_iter().map(|item| {
+                let item = item.as_ref();
                 let (base, bits) = if item.contains('/') {
                     let parts: Vec<&str> = item.split('/').collect();
                     if parts.len() != 2 {
@@ -33,8 +40,6 @@ impl IpWhitelist {
                 Ipv6Network::new(base, bits).chain_err(|| format!("invalid whitelisted network: {:?}", item))
             }).collect();
             p_i?
-        } else {
-            vec![]
         };
         debug!("whitelisted networks: {:?}", parsed);
         Ok(IpWhitelist {
@@ -48,5 +53,27 @@ impl IpWhitelist {
             IpAddr::V6(v6_addr) => v6_addr,
         };
         self.whitelist_networks.iter().any(|n| n.contains(addr))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::net::IpAddr;
+
+    use super::IpWhitelist;
+
+    #[test]
+    fn test_empty() {
+        let wl = IpWhitelist::empty();
+        assert_eq!(wl.contains("127.0.0.1".parse::<IpAddr>().unwrap()), false);
+    }
+
+    #[test]
+    fn test_basic() {
+        let wl = IpWhitelist::new(vec!["127.0.0.0/8", "fd00:eeee::/32"]).expect("should construct");
+        assert_eq!(wl.contains("127.0.0.1".parse::<IpAddr>().unwrap()), true);
+        assert_eq!(wl.contains("126.0.0.1".parse::<IpAddr>().unwrap()), false);
+        assert_eq!(wl.contains("fd00:eeee::1".parse::<IpAddr>().unwrap()), true);
+        assert_eq!(wl.contains("fd00:eee1::1".parse::<IpAddr>().unwrap()), false);
     }
 }

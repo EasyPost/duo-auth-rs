@@ -1,19 +1,17 @@
 use std::collections::BTreeMap;
-use std::time::SystemTime;
 
+use chrono::{DateTime, Utc};
 use serde_json::Value;
 use reqwest::{self, Url, Method};
-use reqwest::header;
 use url::form_urlencoded::Serializer;
-use crypto::hmac::Hmac;
-use crypto::sha1::Sha1;
-use crypto::mac::{Mac, MacResult};
-use itertools::Itertools;
+use sha1::Sha1;
+use hmac::{Hmac, Mac};
+use hex;
 
-use config;
+use crate::config;
 
 pub(crate) mod errors {
-    use duo_client::DuoResponseStatus;
+    use crate::duo_client::DuoResponseStatus;
 
 
     error_chain! {
@@ -39,21 +37,11 @@ pub(crate) mod errors {
 
 use self::errors::*;
 
-trait Hexlify {
-    fn hexlify(&self) -> String;
-}
-
-impl Hexlify for MacResult {
-    fn hexlify(&self) -> String {
-        // This does not feel like an efficient way to do this
-        format!("{:02x}", self.code().iter().format(""))
-    }
-}
 
 struct DuoRequest<'a> {
     method: Method,
     path: &'a str,
-    date: header::HttpDate,
+    date: DateTime<Utc>,
     params: BTreeMap<String, String>
 }
 
@@ -97,7 +85,7 @@ impl DuoResponse {
             DuoResponseStatus::Ok => if let Some(json) = self.json {
                     Ok(OkDuoResponse {
                         stat: DuoResponseStatus::Ok,
-                        json: json
+                        json
                     })
                 } else {
                     Err(ErrorKind::InvalidResponse(self.stat).into())
@@ -115,9 +103,9 @@ impl DuoResponse {
                 let message_detail = data["message_detail"].as_str().map(|o| o.to_owned());
                 let code = data["code"].as_i64().unwrap_or(0);
                 DuoResponseStatus::Fail {
-                    code: code,
-                    message: message,
-                    message_detail: message_detail
+                    code,
+                    message,
+                    message_detail
                 }
             }
             Some(s) => DuoResponseStatus::Other(s.to_owned()),
@@ -129,18 +117,20 @@ impl DuoResponse {
                 DuoResponseStatus::Ok => data.get("response").map(|i| i.to_owned()),
                 _ => None,
             },
-            stat: stat,
+            stat,
         })
     }
 }
+
+type HmacSha1 = Hmac<Sha1>;
 
 
 impl<'a> DuoRequest<'a> {
     fn new(method: Method, path: &'a str) -> DuoRequest<'a> {
         DuoRequest {
-            method: method,
-            path: path,
-            date: header::HttpDate::from(SystemTime::now()),
+            method,
+            path,
+            date: Utc::now(),
             params: BTreeMap::new()
         }
     }
@@ -148,16 +138,18 @@ impl<'a> DuoRequest<'a> {
 
     fn sign(&self, body: &str, client: &DuoClient) -> String {
         let to_sign = &[
-            self.date.to_string(),
+            self.date.to_rfc2822(),
             self.method.to_string().to_uppercase(),
             client.base_url.host_str().expect("URL must have a host...").to_owned(),
             self.path.to_owned(),
             body.to_owned(),
         ];
         let to_sign = to_sign.join("\n");
-        let mut signer = Hmac::new(Sha1::new(), &client.skey.as_bytes());
+        let mut signer = HmacSha1::new_varkey(
+            &client.skey.as_bytes()
+        ).expect("skey must be the right size");
         signer.input(to_sign.as_bytes());
-        signer.result().hexlify().into()
+        hex::encode(signer.result().code())
     }
 
     fn run(self, client: &DuoClient) -> Result<DuoResponse> {
@@ -169,21 +161,22 @@ impl<'a> DuoRequest<'a> {
         let signature = self.sign(&body, client);
         let mut url = client.base_url.clone();
         url.set_path(self.path);
-        let can_have_body = match &self.method {
-            &Method::Get | &Method::Head => false,
+        let can_have_body = match self.method {
+            Method::GET | Method::HEAD => false,
             _ => true
         };
         if !can_have_body {
             url.set_query(Some(&body));
         }
-        let mut rb = client.client.request(self.method, url)?;
-        rb.basic_auth(client.ikey.clone(), Some(signature));
-        rb.header(header::Date(self.date));
-        rb.header(header::UserAgent::new(concat!("duo-auth-rs/", env!("CARGO_PKG_VERSION"))));
-        if can_have_body {
-            rb.header(header::ContentType::form_url_encoded());
-            rb.body(body);
-        }
+        let rb = client.client.request(self.method, url)
+            .basic_auth(client.ikey.clone(), Some(signature))
+            .header("Date", self.date.to_rfc2822())
+            .header("User-Agent", concat!("duo-auth-rs/", env!("CARGO_PKG_VERSION")));
+        let rb = if can_have_body {
+            rb.header("Content-Type", "application/x-www-form-urlencoded").body(body)
+        } else {
+            rb
+        };
         let resp = rb.send()?;
         DuoResponse::from_response(resp)
     }
@@ -209,27 +202,27 @@ impl DuoClient {
             ikey: config.ikey.clone(),
             skey: config.skey.clone(),
             base_url: Url::parse(&config.base)?,
-            client: reqwest::Client::builder()?
+            client: reqwest::Client::builder()
                 .timeout(config.request_timeout)
                 .build()?,
         })
     }
 
     pub fn check(&mut self) -> Result<bool> {
-        let req = DuoRequest::new(Method::Get, "/auth/v2/check");
+        let req = DuoRequest::new(Method::GET, "/auth/v2/check");
         let resp = req.run(&self)?;
         Ok(resp.status().is_success())
     }
 
     pub fn auth_for(&mut self, user: &str, rhost: &str) -> Result<bool> {
-        let mut req = DuoRequest::new(Method::Post, "/auth/v2/auth");
+        let mut req = DuoRequest::new(Method::POST, "/auth/v2/auth");
         req.set_param("username", user);
         req.set_param("ipaddr", rhost);
         req.set_param("factor", "push");
         req.set_param("device", "auto");
         let resp = req.run(&self)?.consume()?;
         let result = resp.response_json()["result"].as_str().ok_or("missing result")?.to_owned();
-        return Ok(match result.as_str() {
+        Ok(match result.as_str() {
             "allow" => true,
             "deny" => false,
             other => {

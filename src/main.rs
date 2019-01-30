@@ -1,36 +1,25 @@
-extern crate reqwest;
-extern crate clap;
 #[macro_use] extern crate log;
-extern crate env_logger;
-extern crate log_panics;
-extern crate syslog;
 #[macro_use] extern crate error_chain;
-extern crate serde;
-#[macro_use] extern crate serde_derive;
-extern crate serde_json;
-extern crate rusqlite;
-extern crate url;
-extern crate crypto;
-extern crate itertools;
-extern crate ipnetwork;
 
-use clap::Arg;
 use std::env;
 use std::str::FromStr;
 use std::path::Path;
 use std::net::IpAddr;
 
+use clap::{self, Arg};
+use env_logger;
+use log_panics;
+
 mod config;
 mod duo_client;
 mod recent_ip;
 mod ip_whitelist;
-mod logger;
 
 mod errors {
     error_chain!{
         links {
-            DuoClient(::duo_client::errors::Error, ::duo_client::errors::ErrorKind);
-            Db(::recent_ip::errors::Error, ::recent_ip::errors::ErrorKind);
+            DuoClient(crate::duo_client::errors::Error, crate::duo_client::errors::ErrorKind);
+            Db(crate::recent_ip::errors::Error, crate::recent_ip::errors::ErrorKind);
         }
 
         foreign_links {
@@ -53,7 +42,7 @@ mod errors {
     }
 }
 
-use errors::*;
+use crate::errors::*;
 
 
 fn get_env_var(s: String) -> Result<String> {
@@ -103,14 +92,15 @@ fn main_r() -> errors::Result<i32> {
     
     // set up logging
     if matches.is_present("stderr") {
-        env_logger::init().chain_err(|| "cannot initialize env_logger")?;
+        env_logger::init();
     } else {
         let log_level = match env::var("RUST_LOG") {
-            Ok(level) => log::LogLevelFilter::from_str(&level).map_err(|_| ErrorKind::InvalidLogLevel(level.to_owned()))?,
-            _ => log::LogLevelFilter::Info
+            Ok(level) => log::LevelFilter::from_str(&level).map_err(|_| ErrorKind::InvalidLogLevel(level.to_owned()))?,
+            _ => log::LevelFilter::Info
         };
-        logger::init_unix(syslog::Facility::LOG_AUTH, log_level).chain_err(|| "cannot initialize syslog")?;
+        syslog::init_unix(syslog::Facility::LOG_AUTH, log_level).chain_err(|| "cannot initialize syslog")?;
     }
+    log_panics::init();
 
     let config = config::Config::from_path(Path::new(matches.value_of("config_file").unwrap()))?;
 
@@ -134,11 +124,7 @@ fn main_r() -> errors::Result<i32> {
         return Ok(0);
     }
 
-    let mut recent_ip = if config.has_recent_ip() {
-        Some(recent_ip::RecentIp::from_config(&config)?)
-    } else {
-        None
-    };
+    let mut recent_ip = config.make_recent_ip()?;
 
     if let Some(ref recent_ip) = recent_ip {
         if recent_ip.check_for(&user, &rhost)? {
