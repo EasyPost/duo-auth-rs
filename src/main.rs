@@ -15,6 +15,7 @@ mod duo_client;
 mod recent_ip;
 mod ip_whitelist;
 
+#[allow(deprecated)]
 mod errors {
     error_chain!{
         links {

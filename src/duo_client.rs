@@ -10,6 +10,7 @@ use hex;
 
 use crate::config;
 
+#[allow(deprecated)]
 pub(crate) mod errors {
     use crate::duo_client::DuoResponseStatus;
 

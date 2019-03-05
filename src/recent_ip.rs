@@ -6,6 +6,7 @@ use rusqlite::{self, NO_PARAMS};
 use rusqlite::types::ToSql;
 
 
+#[allow(deprecated)]
 pub(crate) mod errors {
     error_chain! {
         types {
