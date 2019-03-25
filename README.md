@@ -13,3 +13,5 @@ Configuration should follow the format described in `example_config.json`; the d
 `/etc/duo-auth-rs.json`.
 
 This software is licensed under the ISC license, a copy of which can be found in the file [LICENSE.txt](LICENSE.txt).
+
+This tool requires Rust 1.33 or later.

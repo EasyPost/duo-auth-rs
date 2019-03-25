@@ -62,19 +62,13 @@ impl Config {
     }
 
     pub(crate) fn make_recent_ip(&self) -> Result<Option<RecentIp>> {
-        match self.recent_ip_file.as_ref().map(|path| {
+        self.recent_ip_file.as_ref().map(|path| {
             RecentIp::try_new(
                 path,
                 self.recent_ip_duration,
                 self.mask_ipv6
             )
-        }) {
-            // the transpose function in 1.33 will save me from this
-            None => Ok(None),
-            Some(Ok(val)) => Ok(Some(val)),
-            Some(Err(db_error)) => Err(db_error.into())
-        }
-
+        }).transpose().map_err(Error::from)
     }
 }
 
