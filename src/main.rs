@@ -1,10 +1,12 @@
-#[macro_use] extern crate log;
-#[macro_use] extern crate error_chain;
+#[macro_use]
+extern crate log;
+#[macro_use]
+extern crate error_chain;
 
 use std::env;
-use std::str::FromStr;
-use std::path::Path;
 use std::net::IpAddr;
+use std::path::Path;
+use std::str::FromStr;
 
 use clap::{self, Arg};
 use env_logger;
@@ -12,12 +14,12 @@ use log_panics;
 
 mod config;
 mod duo_client;
-mod recent_ip;
 mod ip_whitelist;
+mod recent_ip;
 
 #[allow(deprecated)]
 mod errors {
-    error_chain!{
+    error_chain! {
         links {
             DuoClient(crate::duo_client::errors::Error, crate::duo_client::errors::ErrorKind);
             Db(crate::recent_ip::errors::Error, crate::recent_ip::errors::ErrorKind);
@@ -45,61 +47,72 @@ mod errors {
 
 use crate::errors::*;
 
-
 fn get_env_var(s: String) -> Result<String> {
     env::var(&s).map_err(|_| ErrorKind::MissingEnvironmentVariable(s).into())
 }
 
-
-
 fn main_r() -> errors::Result<i32> {
     let matches = clap::App::new(env!("CARGO_PKG_NAME"))
-                            .version(env!("CARGO_PKG_VERSION"))
-                            .about(env!("CARGO_PKG_DESCRIPTION"))
-                            .author("James Brown <jbrown@easypost.com>")
-                            .arg(Arg::with_name("stderr")
-                                     .short("e")
-                                     .long("stderr")
-                                     .takes_value(false)
-                                     .help("Log to stderr instead of syslog"))
-                            .arg(Arg::with_name("config_file")
-                                     .short("c")
-                                     .long("config-file")
-                                     .takes_value(true)
-                                     .value_name("PATH")
-                                     .default_value("/etc/duo-auth-rs.json")
-                                     .help("Path to config file"))
-                            .arg(Arg::with_name("username_env")
-                                     .long("username-env")
-                                     .takes_value(true)
-                                     .value_name("VAR")
-                                     .default_value("PAM_USER")
-                                     .help("Name of environment variable containing username"))
-                            .arg(Arg::with_name("ip_env")
-                                     .long("ip-env")
-                                     .takes_value(true)
-                                     .value_name("VAR")
-                                     .default_value("PAM_RHOST")
-                                     .help("Name of environment variable containing remote IP"))
-                            .arg(Arg::with_name("check")
-                                     .long("check-duo")
-                                     .takes_value(false)
-                                     .help("Run check method on Duo before authing"))
-                            .arg(Arg::with_name("never_duo")
-                                     .long("never-duo")
-                                     .takes_value(false)
-                                     .help("If passed, will never call Duo and will just fail of no whitelists match"))
-                            .get_matches();
-    
+        .version(env!("CARGO_PKG_VERSION"))
+        .about(env!("CARGO_PKG_DESCRIPTION"))
+        .author("James Brown <jbrown@easypost.com>")
+        .arg(
+            Arg::with_name("stderr")
+                .short("e")
+                .long("stderr")
+                .takes_value(false)
+                .help("Log to stderr instead of syslog"),
+        )
+        .arg(
+            Arg::with_name("config_file")
+                .short("c")
+                .long("config-file")
+                .takes_value(true)
+                .value_name("PATH")
+                .default_value("/etc/duo-auth-rs.json")
+                .help("Path to config file"),
+        )
+        .arg(
+            Arg::with_name("username_env")
+                .long("username-env")
+                .takes_value(true)
+                .value_name("VAR")
+                .default_value("PAM_USER")
+                .help("Name of environment variable containing username"),
+        )
+        .arg(
+            Arg::with_name("ip_env")
+                .long("ip-env")
+                .takes_value(true)
+                .value_name("VAR")
+                .default_value("PAM_RHOST")
+                .help("Name of environment variable containing remote IP"),
+        )
+        .arg(
+            Arg::with_name("check")
+                .long("check-duo")
+                .takes_value(false)
+                .help("Run check method on Duo before authing"),
+        )
+        .arg(
+            Arg::with_name("never_duo")
+                .long("never-duo")
+                .takes_value(false)
+                .help("If passed, will never call Duo and will just fail of no whitelists match"),
+        )
+        .get_matches();
+
     // set up logging
     if matches.is_present("stderr") {
         env_logger::init();
     } else {
         let log_level = match env::var("RUST_LOG") {
-            Ok(level) => log::LevelFilter::from_str(&level).map_err(|_| ErrorKind::InvalidLogLevel(level.to_owned()))?,
-            _ => log::LevelFilter::Info
+            Ok(level) => log::LevelFilter::from_str(&level)
+                .map_err(|_| ErrorKind::InvalidLogLevel(level.to_owned()))?,
+            _ => log::LevelFilter::Info,
         };
-        syslog::init_unix(syslog::Facility::LOG_AUTH, log_level).chain_err(|| "cannot initialize syslog")?;
+        syslog::init_unix(syslog::Facility::LOG_AUTH, log_level)
+            .chain_err(|| "cannot initialize syslog")?;
     }
     log_panics::init();
 
@@ -155,7 +168,7 @@ fn main() {
     match main_r() {
         Ok(i) => {
             ::std::process::exit(i);
-        },
+        }
         Err(ref e) => {
             error!("error: {}", e);
             eprintln!("error: {}", e);

@@ -1,19 +1,18 @@
 use std::collections::BTreeMap;
 
 use chrono::{DateTime, Utc};
-use serde_json::Value;
-use reqwest::{self, Url, Method};
-use url::form_urlencoded::Serializer;
-use sha1::Sha1;
-use hmac::{Hmac, Mac};
 use hex;
+use hmac::{Hmac, Mac};
+use reqwest::{self, Method, Url};
+use serde_json::Value;
+use sha1::Sha1;
+use url::form_urlencoded::Serializer;
 
 use crate::config;
 
 #[allow(deprecated)]
 pub(crate) mod errors {
     use crate::duo_client::DuoResponseStatus;
-
 
     error_chain! {
         types {
@@ -38,27 +37,29 @@ pub(crate) mod errors {
 
 use self::errors::*;
 
-
 struct DuoRequest<'a> {
     method: Method,
     path: &'a str,
     date: DateTime<Utc>,
-    params: BTreeMap<String, String>
+    params: BTreeMap<String, String>,
 }
-
 
 #[derive(Debug)]
 pub enum DuoResponseStatus {
     Ok,
-    Fail { code: i64 , message: String, message_detail: Option<String> },
+    Fail {
+        code: i64,
+        message: String,
+        message_detail: Option<String>,
+    },
     NoStat,
-    Other(String)
+    Other(String),
 }
 
 #[derive(Debug)]
 struct OkDuoResponse {
     stat: DuoResponseStatus,
-    json: Value
+    json: Value,
 }
 
 impl OkDuoResponse {
@@ -71,7 +72,7 @@ impl OkDuoResponse {
 struct DuoResponse {
     status: reqwest::StatusCode,
     stat: DuoResponseStatus,
-    json: Option<Value>
+    json: Option<Value>,
 }
 
 impl DuoResponse {
@@ -83,15 +84,17 @@ impl DuoResponse {
     /// guaranteed to have an "OK" stat and a valid response body
     fn consume(self) -> Result<OkDuoResponse> {
         match self.stat {
-            DuoResponseStatus::Ok => if let Some(json) = self.json {
+            DuoResponseStatus::Ok => {
+                if let Some(json) = self.json {
                     Ok(OkDuoResponse {
                         stat: DuoResponseStatus::Ok,
-                        json
+                        json,
                     })
                 } else {
                     Err(ErrorKind::InvalidResponse(self.stat).into())
-            },
-            v => Err(ErrorKind::InvalidResponse(v).into())
+                }
+            }
+            v => Err(ErrorKind::InvalidResponse(v).into()),
         }
     }
 
@@ -106,7 +109,7 @@ impl DuoResponse {
                 DuoResponseStatus::Fail {
                     code,
                     message,
-                    message_detail
+                    message_detail,
                 }
             }
             Some(s) => DuoResponseStatus::Other(s.to_owned()),
@@ -125,30 +128,31 @@ impl DuoResponse {
 
 type HmacSha1 = Hmac<Sha1>;
 
-
 impl<'a> DuoRequest<'a> {
     fn new(method: Method, path: &'a str) -> DuoRequest<'a> {
         DuoRequest {
             method,
             path,
             date: Utc::now(),
-            params: BTreeMap::new()
+            params: BTreeMap::new(),
         }
     }
-
 
     fn sign(&self, body: &str, client: &DuoClient) -> String {
         let to_sign = &[
             self.date.to_rfc2822(),
             self.method.to_string().to_uppercase(),
-            client.base_url.host_str().expect("URL must have a host...").to_owned(),
+            client
+                .base_url
+                .host_str()
+                .expect("URL must have a host...")
+                .to_owned(),
             self.path.to_owned(),
             body.to_owned(),
         ];
         let to_sign = to_sign.join("\n");
-        let mut signer = HmacSha1::new_varkey(
-            &client.skey.as_bytes()
-        ).expect("skey must be the right size");
+        let mut signer =
+            HmacSha1::new_varkey(&client.skey.as_bytes()).expect("skey must be the right size");
         signer.input(to_sign.as_bytes());
         hex::encode(signer.result().code())
     }
@@ -164,17 +168,23 @@ impl<'a> DuoRequest<'a> {
         url.set_path(self.path);
         let can_have_body = match self.method {
             Method::GET | Method::HEAD => false,
-            _ => true
+            _ => true,
         };
         if !can_have_body {
             url.set_query(Some(&body));
         }
-        let rb = client.client.request(self.method, url)
+        let rb = client
+            .client
+            .request(self.method, url)
             .basic_auth(client.ikey.clone(), Some(signature))
             .header("Date", self.date.to_rfc2822())
-            .header("User-Agent", concat!("duo-auth-rs/", env!("CARGO_PKG_VERSION")));
+            .header(
+                "User-Agent",
+                concat!("duo-auth-rs/", env!("CARGO_PKG_VERSION")),
+            );
         let rb = if can_have_body {
-            rb.header("Content-Type", "application/x-www-form-urlencoded").body(body)
+            rb.header("Content-Type", "application/x-www-form-urlencoded")
+                .body(body)
         } else {
             rb
         };
@@ -187,7 +197,6 @@ impl<'a> DuoRequest<'a> {
     }
 }
 
-
 #[derive(Debug)]
 pub struct DuoClient {
     ikey: String,
@@ -195,7 +204,6 @@ pub struct DuoClient {
     base_url: Url,
     client: reqwest::Client,
 }
-
 
 impl DuoClient {
     pub(crate) fn from_config(config: &config::Config) -> Result<DuoClient> {
@@ -222,7 +230,10 @@ impl DuoClient {
         req.set_param("factor", "push");
         req.set_param("device", "auto");
         let resp = req.run(&self)?.consume()?;
-        let result = resp.response_json()["result"].as_str().ok_or("missing result")?.to_owned();
+        let result = resp.response_json()["result"]
+            .as_str()
+            .ok_or("missing result")?
+            .to_owned();
         Ok(match result.as_str() {
             "allow" => true,
             "deny" => false,

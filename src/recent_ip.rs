@@ -1,10 +1,9 @@
+use std::net::Ipv6Addr;
 use std::path::Path;
 use std::time::{Duration, UNIX_EPOCH};
-use std::net::Ipv6Addr;
 
-use rusqlite::{self, NO_PARAMS};
 use rusqlite::types::ToSql;
-
+use rusqlite::{self, NO_PARAMS};
 
 #[allow(deprecated)]
 pub(crate) mod errors {
@@ -34,12 +33,10 @@ pub(crate) struct RecentIp {
     mask_ipv6: bool,
 }
 
-
 fn now() -> i64 {
     let duration = UNIX_EPOCH.elapsed().expect("it should not be before 1970");
     duration.as_secs() as i64
 }
-
 
 // Fun fact: the to_ipv5() method on Ipv6Addr now accepts IPv4-compatible addresses,
 // which are impossible to distinguish from loopback addresses
@@ -50,15 +47,14 @@ trait IsIpv4Mapped {
 impl IsIpv4Mapped for Ipv6Addr {
     fn is_ipv4_mapped(&self) -> bool {
         let segs = self.segments();
-        segs[0] == 0 &&
-            segs[1] == 0 &&
-            segs[2] == 0 &&
-            segs[3] == 0 &&
-            segs[4] == 0 &&
-            segs[5] == 0xffff
+        segs[0] == 0
+            && segs[1] == 0
+            && segs[2] == 0
+            && segs[3] == 0
+            && segs[4] == 0
+            && segs[5] == 0xffff
     }
 }
-
 
 impl RecentIp {
     pub(crate) fn try_new(path: &Path, expiration: Duration, mask_ipv6: bool) -> Result<Self> {
@@ -83,16 +79,7 @@ impl RecentIp {
                 *a
             } else {
                 let segs = a.segments();
-                Ipv6Addr::new(
-                    segs[0],
-                    segs[1],
-                    segs[2],
-                    segs[3],
-                    0,
-                    0,
-                    0,
-                    0
-                )
+                Ipv6Addr::new(segs[0], segs[1], segs[2], segs[3], 0, 0, 0, 0)
             }
         } else {
             *a
@@ -101,20 +88,30 @@ impl RecentIp {
 
     pub fn check_for(&self, user: &str, rhost: &Ipv6Addr) -> Result<bool> {
         let rhost = self.normalize_addr(rhost).to_string();
-        match self.conn.query_row("SELECT last_success_at FROM logins WHERE user = ? AND rhost = ?", &[user, rhost.as_str()], |row| {
-            let ts: i64 = row.get(0);
-            let now = now();
-            if ts > now {
-                warn!("warning: login from the FUTURE! user={:?}, rhost={:?}, ts={:?}, now={:?}", user, rhost, ts, now);
-                Duration::from_secs(0)
-            } else {
-                Duration::from_secs((now - ts) as u64)
-            }
-        }) {
-            Ok(time_delta) => {
-                debug!("recent_ip match was {:?} ago; expiration is {:?}", time_delta, self.expiration);
-                Ok(time_delta < self.expiration)
+        match self.conn.query_row(
+            "SELECT last_success_at FROM logins WHERE user = ? AND rhost = ?",
+            &[user, rhost.as_str()],
+            |row| {
+                let ts: i64 = row.get(0);
+                let now = now();
+                if ts > now {
+                    warn!(
+                        "warning: login from the FUTURE! user={:?}, rhost={:?}, ts={:?}, now={:?}",
+                        user, rhost, ts, now
+                    );
+                    Duration::from_secs(0)
+                } else {
+                    Duration::from_secs((now - ts) as u64)
+                }
             },
+        ) {
+            Ok(time_delta) => {
+                debug!(
+                    "recent_ip match was {:?} ago; expiration is {:?}",
+                    time_delta, self.expiration
+                );
+                Ok(time_delta < self.expiration)
+            }
             Err(rusqlite::Error::QueryReturnedNoRows) => Ok(false),
             Err(e) => Err(e.into()),
         }
@@ -123,8 +120,13 @@ impl RecentIp {
     fn set_inner(&mut self, user: &str, rhost: &str) -> rusqlite::Result<()> {
         let now = now();
         let old_time = now - (2 * self.expiration.as_secs()) as i64;
-        let xact = self.conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
-        xact.execute("INSERT OR REPLACE INTO logins VALUES (?, ?, ?)", &[&user, &rhost, &now as &ToSql])?;
+        let xact = self
+            .conn
+            .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+        xact.execute(
+            "INSERT OR REPLACE INTO logins VALUES (?, ?, ?)",
+            &[&user, &rhost, &now as &dyn ToSql],
+        )?;
         // prune old dead stuff here, too
         xact.execute("DELETE FROM logins WHERE last_success_at < ?", &[&old_time])?;
         xact.commit()?;
@@ -141,11 +143,11 @@ impl RecentIp {
 
 #[cfg(test)]
 mod tests {
+    use std::net::{Ipv4Addr, Ipv6Addr};
     use std::time::Duration;
-    use std::net::{Ipv6Addr, Ipv4Addr};
 
-    use super::RecentIp;
     use super::IsIpv4Mapped;
+    use super::RecentIp;
 
     use tempfile;
 
@@ -193,7 +195,10 @@ mod tests {
         assert_eq!(db.check_for("foobar", &good_source_address).unwrap(), false);
         db.set_for("foobar", &good_source_address);
         assert_eq!(db.check_for("foobar", &good_source_address).unwrap(), true);
-        assert_eq!(db.check_for("foobar", &other_good_source_address).unwrap(), true);
+        assert_eq!(
+            db.check_for("foobar", &other_good_source_address).unwrap(),
+            true
+        );
         assert_eq!(db.check_for("foobar", &bad_source_address).unwrap(), false);
         assert_eq!(db.check_for("foobar", &good_ipv4_address).unwrap(), false);
         assert_eq!(db.check_for("foobar", &bad_ipv4_address).unwrap(), false);
