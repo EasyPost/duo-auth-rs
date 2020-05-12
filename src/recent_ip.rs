@@ -2,6 +2,7 @@ use std::net::Ipv6Addr;
 use std::path::Path;
 use std::time::{Duration, UNIX_EPOCH};
 
+use log::{debug, error, warn};
 use rusqlite::types::ToSql;
 use rusqlite::{self, NO_PARAMS};
 use thiserror::Error;

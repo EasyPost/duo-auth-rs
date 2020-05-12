@@ -1,6 +1,8 @@
 use ipnetwork::Ipv6Network;
 use std::net::IpAddr;
 
+use log::debug;
+
 use super::{Error, Result};
 
 pub struct IpWhitelist {

@@ -1,12 +1,10 @@
-#[macro_use]
-extern crate log;
-
 use std::env;
 use std::net::IpAddr;
 use std::path::Path;
 use std::str::FromStr;
 
 use clap::{self, Arg};
+use log::{error, info, warn};
 use thiserror::Error;
 
 mod config;

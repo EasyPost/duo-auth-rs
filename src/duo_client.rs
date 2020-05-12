@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 
 use chrono::{DateTime, Utc};
 use hmac::{Hmac, Mac};
+use log::warn;
 use reqwest::{self, Method, Url};
 use serde_json::Value;
 use sha1::Sha1;
