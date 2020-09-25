@@ -23,7 +23,7 @@ thiserror = "1.0"
 url = "2"
 ipnetwork = "^0.16"
 syslog = "^5.0"
-rusqlite = { version = "^0.23", features = ["bundled"] }
+rusqlite = { version = "^0.24", features = ["bundled"] }
 
 [dev-dependencies]
 tempfile = "3.0"
