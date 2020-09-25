@@ -1,3 +1,9 @@
+0.2.2
+-----
+- Update rusqlite to 0.24 for RUSTSEC-2020-0014
+- Update to reqwest 0.10
+- Replace `error-chain` with `thiserror`
+
 0.2.1
 -----
 - Update rusqlite to 0.16 (bumps statically-linked sqlite to 3.24)
