@@ -1,49 +1,57 @@
-use std::net::IpAddr;
 use ipnetwork::Ipv6Network;
+use std::net::IpAddr;
 
-use super::errors::*;
+use log::debug;
 
+use super::{Error, Result};
 
 pub struct IpWhitelist {
-    whitelist_networks: Vec<Ipv6Network>
+    whitelist_networks: Vec<Ipv6Network>,
 }
 
 impl IpWhitelist {
     pub fn empty() -> Self {
         IpWhitelist {
-            whitelist_networks: vec![]
+            whitelist_networks: vec![],
         }
     }
 
     pub fn new<S: AsRef<str>>(vs: Vec<S>) -> Result<Self> {
         let parsed: Vec<Ipv6Network> = {
-            let p_i: Result<Vec<Ipv6Network>> = vs.into_iter().map(|item| {
-                let item = item.as_ref();
-                let (base, bits) = if item.contains('/') {
-                    let parts: Vec<&str> = item.split('/').collect();
-                    if parts.len() != 2 {
-                        bail!("wrong number of slashes in a whitelist");
-                    }
-                    let (base, bits_offset) =  match parts[0].parse()? {
-                        IpAddr::V4(v4_addr) => (v4_addr.to_ipv6_mapped(), 96),
-                        IpAddr::V6(v6_addr) => (v6_addr, 0)
+            let p_i: Result<Vec<Ipv6Network>> = vs
+                .into_iter()
+                .map(|item| {
+                    let item = item.as_ref();
+                    let (base, bits) = if item.contains('/') {
+                        let parts: Vec<&str> = item.split('/').collect();
+                        if parts.len() != 2 {
+                            return Err(Error::InvalidWhitelistEntry("wrong number of slashes"));
+                        }
+                        let (base, bits_offset) = match parts[0].parse()? {
+                            IpAddr::V4(v4_addr) => (v4_addr.to_ipv6_mapped(), 96),
+                            IpAddr::V6(v6_addr) => (v6_addr, 0),
+                        };
+                        let bits: u8 = parts[1]
+                            .parse::<u8>()
+                            .map_err(|_| Error::InvalidWhitelistEntry("bad bit suffix"))?
+                            + bits_offset;
+                        (base, bits)
+                    } else {
+                        let base = match item.parse()? {
+                            IpAddr::V4(v4_addr) => v4_addr.to_ipv6_mapped(),
+                            IpAddr::V6(v6_addr) => v6_addr,
+                        };
+                        (base, 128)
                     };
-                    let bits: u8 = parts[1].parse::<u8>().chain_err(|| "bad bit suffix")? + bits_offset;
-                    (base, bits)
-                } else {
-                    let base = match item.parse()? {
-                        IpAddr::V4(v4_addr) => v4_addr.to_ipv6_mapped(),
-                        IpAddr::V6(v6_addr) => v6_addr
-                    };
-                    (base, 128)
-                };
-                Ipv6Network::new(base, bits).chain_err(|| format!("invalid whitelisted network: {:?}", item))
-            }).collect();
+                    Ipv6Network::new(base, bits)
+                        .map_err(|_| Error::InvalidWhitelistEntry("invalid whitelisted network"))
+                })
+                .collect();
             p_i?
         };
         debug!("whitelisted networks: {:?}", parsed);
         Ok(IpWhitelist {
-            whitelist_networks: parsed
+            whitelist_networks: parsed,
         })
     }
 
@@ -74,6 +82,9 @@ mod tests {
         assert_eq!(wl.contains("127.0.0.1".parse::<IpAddr>().unwrap()), true);
         assert_eq!(wl.contains("126.0.0.1".parse::<IpAddr>().unwrap()), false);
         assert_eq!(wl.contains("fd00:eeee::1".parse::<IpAddr>().unwrap()), true);
-        assert_eq!(wl.contains("fd00:eee1::1".parse::<IpAddr>().unwrap()), false);
+        assert_eq!(
+            wl.contains("fd00:eee1::1".parse::<IpAddr>().unwrap()),
+            false
+        );
     }
 }
