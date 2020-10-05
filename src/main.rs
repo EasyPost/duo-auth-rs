@@ -140,14 +140,18 @@ fn main_r() -> Result<i32> {
         return Ok(1);
     }
 
+    println!("Sending Duo push for 2fa, please check your phone...");
+
     if client.auth_for(&user, rhost.to_string().as_str())? {
         info!("successful duo auth for {}@{}", user, rhost);
+        println!("Successful Duo auth, admitting...");
         if let Some(ref mut recent_ip) = recent_ip {
             recent_ip.set_for(&user, &rhost);
         }
         Ok(0)
     } else {
         info!("auth failed via duo for {}@{}", user, rhost);
+        println!("Duo authentication failed!");
         Ok(1)
     }
 }
