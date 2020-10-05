@@ -89,6 +89,12 @@ fn main_r() -> Result<i32> {
                 .takes_value(false)
                 .help("If passed, will never call Duo and will just fail of no whitelists match"),
         )
+        .arg(
+            Arg::with_name("print")
+                .long("print")
+                .short("P")
+                .help("Print something to stdout in addition to syslogging"),
+        )
         .get_matches();
 
     // set up logging
@@ -105,6 +111,8 @@ fn main_r() -> Result<i32> {
     log_panics::init();
 
     let config = config::Config::from_path(Path::new(matches.value_of("config_file").unwrap()))?;
+
+    let print_stdout = matches.is_present("print");
 
     let mut client = duo_client::DuoClient::from_config(&config)?;
 
@@ -140,18 +148,24 @@ fn main_r() -> Result<i32> {
         return Ok(1);
     }
 
-    println!("Sending Duo push for 2fa, please check your phone...");
+    if print_stdout {
+        println!("Sending Duo push for 2fa, please check your phone...");
+    }
 
     if client.auth_for(&user, rhost.to_string().as_str())? {
         info!("successful duo auth for {}@{}", user, rhost);
-        println!("Successful Duo auth, admitting...");
+        if print_stdout {
+            println!("Successful Duo auth, admitting...");
+        }
         if let Some(ref mut recent_ip) = recent_ip {
             recent_ip.set_for(&user, &rhost);
         }
         Ok(0)
     } else {
         info!("auth failed via duo for {}@{}", user, rhost);
-        println!("Duo authentication failed!");
+        if print_stdout {
+            println!("Duo authentication failed!");
+        }
         Ok(1)
     }
 }
