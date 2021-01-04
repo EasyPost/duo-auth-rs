@@ -10,7 +10,6 @@ env:
 
 jobs:
   style:
-    name: Check Style
     runs-on: ubuntu-latest
     steps:
     - name: Checkout
