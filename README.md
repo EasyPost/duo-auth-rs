@@ -3,7 +3,7 @@ and recent IPs.
 
 It's designed to be called using `pam_exec(2)` to provide better 2fa for certain services.
 
-[![Build Status](https://travis-ci.com/EasyPost/duo-auth-rs.svg?branch=master)](https://travis-ci.com/EasyPost/duo-auth-rs)
+![CI](https://github.com/EasyPost/duo-auth-rs/workflows/CI/badge.svg?branch=master)
 
 Note that it does not currently support prompting for the device to use and will always send a push to the user's
 primary device. There's no way to enter a pin code (because there's no way to prompt for input conditionally and
