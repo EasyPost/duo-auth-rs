@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 use chrono::{DateTime, Utc};
-use hmac::{Hmac, Mac};
+use hmac::{Hmac, Mac, NewMac};
 use log::warn;
 use reqwest::{self, Method, Url};
 use serde_json::Value;
@@ -146,8 +146,8 @@ impl<'a> DuoRequest<'a> {
         let to_sign = to_sign.join("\n");
         let mut signer =
             HmacSha1::new_varkey(&client.skey.as_bytes()).expect("skey must be the right size");
-        signer.input(to_sign.as_bytes());
-        hex::encode(signer.result().code())
+        signer.update(to_sign.as_bytes());
+        hex::encode(signer.finalize().into_bytes())
     }
 
     fn run(self, client: &DuoClient) -> Result<DuoResponse> {
