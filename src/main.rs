@@ -46,15 +46,15 @@ fn main_r() -> Result<i32> {
         .about(env!("CARGO_PKG_DESCRIPTION"))
         .author("James Brown <jbrown@easypost.com>")
         .arg(
-            Arg::with_name("stderr")
-                .short("e")
+            Arg::new("stderr")
+                .short('e')
                 .long("stderr")
                 .takes_value(false)
                 .help("Log to stderr instead of syslog"),
         )
         .arg(
-            Arg::with_name("config_file")
-                .short("c")
+            Arg::new("config_file")
+                .short('c')
                 .long("config-file")
                 .takes_value(true)
                 .value_name("PATH")
@@ -62,7 +62,7 @@ fn main_r() -> Result<i32> {
                 .help("Path to config file"),
         )
         .arg(
-            Arg::with_name("username_env")
+            Arg::new("username_env")
                 .long("username-env")
                 .takes_value(true)
                 .value_name("VAR")
@@ -70,7 +70,7 @@ fn main_r() -> Result<i32> {
                 .help("Name of environment variable containing username"),
         )
         .arg(
-            Arg::with_name("ip_env")
+            Arg::new("ip_env")
                 .long("ip-env")
                 .takes_value(true)
                 .value_name("VAR")
@@ -78,13 +78,13 @@ fn main_r() -> Result<i32> {
                 .help("Name of environment variable containing remote IP"),
         )
         .arg(
-            Arg::with_name("check")
+            Arg::new("check")
                 .long("check-duo")
                 .takes_value(false)
                 .help("Run check method on Duo before authing"),
         )
         .arg(
-            Arg::with_name("never_duo")
+            Arg::new("never_duo")
                 .long("never-duo")
                 .takes_value(false)
                 .help("If passed, will never call Duo and will just fail of no whitelists match"),

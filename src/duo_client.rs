@@ -50,7 +50,6 @@ pub enum DuoResponseStatus {
 
 #[derive(Debug)]
 struct OkDuoResponse {
-    stat: DuoResponseStatus,
     json: Value,
 }
 
@@ -78,10 +77,7 @@ impl DuoResponse {
         match self.stat {
             DuoResponseStatus::Ok => {
                 if let Some(json) = self.json {
-                    Ok(OkDuoResponse {
-                        stat: DuoResponseStatus::Ok,
-                        json,
-                    })
+                    Ok(OkDuoResponse { json })
                 } else {
                     Err(Error::InvalidResponse { status: self.stat })
                 }
@@ -145,24 +141,21 @@ impl<'a> DuoRequest<'a> {
         ];
         let to_sign = to_sign.join("\n");
         let mut signer =
-            HmacSha1::new_varkey(&client.skey.as_bytes()).expect("skey must be the right size");
-        signer.input(to_sign.as_bytes());
-        hex::encode(signer.result().code())
+            HmacSha1::new_from_slice(client.skey.as_bytes()).expect("skey must be the right size");
+        signer.update(to_sign.as_bytes());
+        hex::encode(signer.finalize().into_bytes())
     }
 
     fn run(self, client: &DuoClient) -> Result<DuoResponse> {
         let mut ser = Serializer::new(String::new());
         for (key, value) in self.params.iter() {
-            ser.append_pair(&key, &value);
+            ser.append_pair(key, value);
         }
         let body = ser.finish();
         let signature = self.sign(&body, client);
         let mut url = client.base_url.clone();
         url.set_path(self.path);
-        let can_have_body = match self.method {
-            Method::GET | Method::HEAD => false,
-            _ => true,
-        };
+        let can_have_body = !matches!(self.method, Method::GET | Method::HEAD);
         if !can_have_body {
             url.set_query(Some(&body));
         }
@@ -212,7 +205,7 @@ impl DuoClient {
 
     pub fn check(&mut self) -> Result<bool> {
         let req = DuoRequest::new(Method::GET, "/auth/v2/check");
-        let resp = req.run(&self)?;
+        let resp = req.run(self)?;
         Ok(resp.status().is_success())
     }
 
@@ -222,7 +215,7 @@ impl DuoClient {
         req.set_param("ipaddr", rhost);
         req.set_param("factor", "push");
         req.set_param("device", "auto");
-        let resp = req.run(&self)?.consume()?;
+        let resp = req.run(self)?.consume()?;
         let result = resp.response_json()["result"]
             .as_str()
             .ok_or(Error::MalformedResponseBody("missing result"))?
