@@ -4,7 +4,6 @@ use std::time::{Duration, UNIX_EPOCH};
 
 use log::{debug, error, warn};
 use rusqlite::types::ToSql;
-use rusqlite::{self, NO_PARAMS};
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -28,7 +27,7 @@ fn now() -> i64 {
     duration.as_secs() as i64
 }
 
-// Fun fact: the to_ipv5() method on Ipv6Addr now accepts IPv4-compatible addresses,
+// Fun fact: the to_ipv6() method on Ipv6Addr now accepts IPv4-compatible addresses,
 // which are impossible to distinguish from loopback addresses
 trait IsIpv4Mapped {
     fn is_ipv4_mapped(&self) -> bool;
@@ -51,7 +50,7 @@ impl RecentIp {
         let mut conn = rusqlite::Connection::open(path)?;
         {
             let xact = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
-            xact.execute("CREATE TABLE IF NOT EXISTS logins (user STRING NOT NULL, rhost STRING NOT NULL, last_success_at INTEGER, UNIQUE (user, rhost));", NO_PARAMS)?;
+            xact.execute("CREATE TABLE IF NOT EXISTS logins (user STRING NOT NULL, rhost STRING NOT NULL, last_success_at INTEGER, UNIQUE (user, rhost));", [])?;
             xact.commit()?;
         }
         Ok(Self {

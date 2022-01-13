@@ -3,7 +3,7 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::time::Duration;
 
-use serde_derive::Deserialize;
+use serde::Deserialize;
 
 use super::{Error, Result};
 use crate::ip_whitelist::IpWhitelist;
@@ -54,7 +54,7 @@ impl Config {
     pub fn from_path(p: &Path) -> Result<Self> {
         let f = File::open(p).map_err(Error::ConfigIOError)?;
         let config: RawConfig = serde_json::from_reader(f)?;
-        Ok(Config::from_raw_config(config)?)
+        Config::from_raw_config(config)
     }
 
     pub(crate) fn make_recent_ip(&self) -> Result<Option<RecentIp>> {
