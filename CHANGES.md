@@ -1,3 +1,8 @@
+0.2.3
+-----
+- Update various dependencies
+- Change edition from 2018 to 2021 (requires Rust 1.56.0 or later)
+
 0.2.2
 -----
 - Update rusqlite to 0.24 for RUSTSEC-2020-0014
